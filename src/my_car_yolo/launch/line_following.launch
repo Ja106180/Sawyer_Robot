@@ -1,0 +1,90 @@
+<?xml version="1.0"?>
+<launch>
+    <!--
+        line_following.launch
+        巡线系统启动文件
+
+        功能：
+        1. 启动YOLO检测节点（Python）- 检测小车标志物，显示4个点和线段
+        2. 启动巡线控制节点（C++）- 虚拟弹簧控制小车沿线段巡线
+        3. 启动IMU数据处理器节点（Python）
+        4. 启动里程计处理器节点（Python）
+        5. 启动rosserial TCP节点（ESP32通信）
+
+        使用方法：
+        roslaunch my_car_yolo line_following.launch
+
+        可选参数：
+        - model_path: YOLO模型路径
+        - calibration_path: 标定文件路径
+    -->
+
+    <!-- 参数定义 -->
+    <arg name="model_path" default="" doc="YOLO模型文件路径"/>
+    <arg name="calibration_path" default="" doc="手眼标定文件路径"/>
+    <arg name="rosserial_tcp_port" default="11411" doc="rosserial TCP端口"/>
+
+    <!-- YOLO检测节点 (Python) - 巡线专用 -->
+    <node name="line_following_yolo" pkg="my_car_yolo" type="line_following_yolo.py" output="screen">
+        <param name="model" value="$(arg model_path)"/>
+        <param name="conf_threshold" value="0.8"/>
+        <param name="window_name" value="Line Following YOLO Detection"/>
+        <param name="source" value="0"/>
+    </node>
+
+    <!-- 巡线控制节点 (C++) -->
+    <node name="line_following_node" pkg="my_car_yolo" type="line_following_node" output="screen">
+        <param name="calibration_path" value="$(arg calibration_path)"/>
+
+        <!-- 到达判断参数 -->
+        <param name="arrival_threshold_meters" value="0.03"/>        <!-- 到达距离阈值（3cm） -->
+        <param name="stable_frames_required" value="4"/>             <!-- 需要连续稳定帧数 -->
+        <param name="conf_threshold" value="0.8"/>                   <!-- YOLO置信度阈值 -->
+
+        <!-- 虚拟弹簧 / 巡线控制参数 -->
+        <param name="spring_kp" value="0.5"/>                       <!-- 最近点“拉回”权重（拐角预瞄用） -->
+        <param name="lateral_kp" value="1.0"/>                      <!-- 横向误差 → 角速度 比例系数（减小，防止原地猛转） -->
+        <param name="angular_kp" value="0.20"/>                    <!-- (保留备用) 角速度比例系数 -->
+        <param name="angular_kd" value="0.12"/>                    <!-- (保留备用) 角速度阻尼系数 -->
+        <param name="angular_deadband_deg" value="8.0"/>           <!-- 角度死区（当前未直接使用） -->
+        <!-- 方向符号：若发现“在右侧却往更右边跑”，可把 angular_dir 改成 -1.0 -->
+        <param name="angular_dir" value="1.0"/>                    <!-- 转向方向符号 -->
+        <param name="imu_yaw_sign" value="-1.0"/>                   <!-- IMU yaw符号（目前不参与控制） -->
+
+        <!-- 速度参数 -->
+        <param name="constant_linear_speed" value="0.08"/>          <!-- 最大前进速度（m/s，稍微提一点，防止太慢） -->
+        <param name="max_angular_speed" value="0.3"/>              <!-- 最大角速度（rad/s，稍微降一点） -->
+    </node>
+
+    <!-- IMU处理器节点 (Python) -->
+    <node name="imu_processor" pkg="my_car_yolo" type="imu_processor.py" output="screen">
+        <!-- IMU处理参数 -->
+        <param name="sample_rate" value="50.0"/>                   <!-- IMU采样率 (Hz) -->
+        <param name="gyro_bias_alpha" value="0.001"/>             <!-- 零偏自适应系数 -->
+        <param name="gyro_static_thresh" value="0.05"/>            <!-- 静止阈值 (rad/s) -->
+        <param name="low_pass_alpha" value="0.3"/>                <!-- 低通滤波系数 -->
+        <param name="use_kalman" value="true"/>                    <!-- 是否使用卡尔曼滤波 -->
+    </node>
+
+    <!-- 里程计处理器节点 (Python) -->
+    <node name="odometry_processor" pkg="my_car_yolo" type="odometry_processor.py" output="screen">
+        <!-- 编码器参数 -->
+        <param name="ticks_per_rev" value="1320.0"/>               <!-- 每转脉冲数 (JGB-520: 11×4×30) -->
+        <param name="wheel_radius" value="0.067"/>                 <!-- 轮子半径 (m) 67mm -->
+        <param name="wheel_base" value="0.194"/>                   <!-- 轮距 (m) 194mm -->
+        <param name="update_rate" value="20.0"/>                   <!-- 更新频率 (Hz) -->
+
+        <!-- 去抖参数 -->
+        <param name="debounce_count" value="2"/>                   <!-- 连续检测次数 -->
+        <param name="max_velocity" value="1.0"/>                   <!-- 最大速度 (m/s) -->
+
+        <!-- 滤波参数 -->
+        <param name="velocity_filter_alpha" value="0.3"/>          <!-- 速度滤波系数 -->
+        <param name="use_complementary" value="true"/>             <!-- 使用互补滤波 -->
+    </node>
+
+    <!-- rosserial TCP节点，供ESP32通过WiFi连接 -->
+    <node name="rosserial_tcp" pkg="rosserial_python" type="serial_node.py"
+          args="tcp $(arg rosserial_tcp_port)" output="screen"/>
+</launch>
+

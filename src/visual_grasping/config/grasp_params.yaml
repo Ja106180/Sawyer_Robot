@@ -1,0 +1,31 @@
+# 视觉抓取参数配置
+
+# YOLO模型路径
+model_path: "/home/mycar/YOLO/ultralytics-8.3.163/yolov8n_landmark.pt"
+
+# 摄像头话题
+camera_topic: "/io/internal_camera/head_camera/image_rect_color"
+
+# 标定结果路径（相对于Position_Calibration包）
+calibration_path: "$(find Position_Calibration)/config/calibration.yaml"
+
+# 桌面高度（米）
+table_height: 0.746
+
+# 物体高度（米）
+object_height: 0.085
+
+# YOLO检测置信度阈值
+conf_threshold: 0.5
+
+# 检测参数
+stable_time: 5.0          # 位置稳定时间（秒）
+position_threshold: 10.0  # 位置稳定阈值（像素）
+min_detections: 5         # 最小连续检测帧数
+
+# 抓取参数
+pre_grasp_offset: 0.15     # 预抓取位置高度偏移（米）
+lift_offset: 0.15         # 抬起高度偏移（米）
+move_speed: 0.3           # 移动速度
+descent_speed: 0.1        # 下降速度
+

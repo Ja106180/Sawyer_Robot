@@ -1,0 +1,94 @@
+<?xml version="1.0"?>
+<launch>
+  <!-- 视觉控制完整启动文件：同时启动摄像头发布、视觉控制、人脸跟踪和头部图片显示节点 -->
+  
+  <!-- 摄像头发布节点：统一管理USB摄像头，发布图像到话题 -->
+  <node name="camera_publisher" 
+        pkg="vision_control" 
+        type="camera_publisher.py" 
+        output="screen">
+    
+    <!-- 摄像头参数 -->
+    <param name="camera_id" value="0" />
+    <param name="frame_width" value="640" />
+    <param name="frame_height" value="480" />
+    <param name="fps" value="30.0" />
+    
+  </node>
+  
+  <!-- 视觉控制节点：手势识别 -->
+  <node name="vision_control_node" 
+        pkg="vision_control" 
+        type="vision_control_node.py" 
+        output="screen"
+        launch-prefix="bash -c 'sleep 1; $0 $@'">
+    
+    <!-- 图像话题 -->
+    <param name="image_topic" value="/camera/image_raw" />
+    
+    <!-- 手势识别参数 -->
+    <param name="swipe_threshold" value="30.0" />
+    <param name="swipe_frames" value="5" />
+    <param name="zoom_threshold" value="0.15" />
+    <param name="zoom_speed_threshold" value="0.05" />
+    
+    <!-- UI参数 -->
+    <param name="ui_highlight_duration" value="1.0" />
+    
+  </node>
+  
+  <!-- 人脸跟踪节点：控制J4和J5关节跟踪人脸（默认一直运行） -->
+  <node name="face_follow_node" 
+        pkg="vision_control" 
+        type="face_follow.py" 
+        output="screen"
+        launch-prefix="bash -c 'sleep 1; $0 $@'">
+    
+    <!-- 图像话题 -->
+    <param name="image_topic" value="/camera/image_raw" />
+    
+    <!-- 控制频率 -->
+    <param name="control_rate" value="40.0" />
+    
+    <!-- 人脸检测参数 -->
+    <param name="face_confidence_threshold" value="0.75" />
+    <param name="min_face_area_ratio" value="0.01" />
+    <param name="max_face_area_ratio" value="0.5" />
+    
+    <!-- 虚拟弹簧控制参数（PD控制器） -->
+    <param name="kp_x" value="0.035" />
+    <param name="kp_y" value="0.030" />
+    <param name="kd_x" value="0.0020" />
+    <param name="kd_y" value="0.0030" />
+    <param name="deadzone_x" value="12.0" />
+    <param name="deadzone_y" value="18.0" />
+    <param name="max_velocity_x" value="1.5" />
+    <param name="max_velocity_y" value="1.3" />
+    <param name="filter_alpha" value="0.82" />
+    <param name="error_filter_alpha_x" value="0.75" />
+    <param name="error_filter_alpha_y" value="0.85" />
+    
+    <!-- 超时保护 -->
+    <param name="face_lost_timeout" value="2.0" />
+    
+    <!-- 关节限位（弧度） -->
+    <param name="j4_min" value="-2.0" />
+    <param name="j4_max" value="2.0" />
+    <param name="j5_min" value="-2.0" />
+    <param name="j5_max" value="1.7" />
+    
+  </node>
+  
+  <!-- 头部图片显示节点 -->
+  <node name="head_photo_node" 
+        pkg="vision_control" 
+        type="head_photo_node.py" 
+        output="screen">
+    
+    <!-- photo文件夹路径（可选，默认使用相对路径） -->
+    <!-- <param name="photo_path" value="/path/to/photo" /> -->
+    
+  </node>
+  
+</launch>
+

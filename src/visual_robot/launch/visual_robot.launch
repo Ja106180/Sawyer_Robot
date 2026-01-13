@@ -1,0 +1,35 @@
+<?xml version="1.0"?>
+<launch>
+  <!-- YOLO检测参数 -->
+  <arg name="model_path" default="/home/mycar/YOLO/ultralytics-8.3.163/yolov8n_landmark.pt" />
+  <arg name="yolo_source" default="1" />          <!-- 1 表示头部摄像头 -->
+  <arg name="yolo_stream" default="true" />
+  <arg name="yolo_window_name" default="YOLO Inference" />
+  <arg name="yolo_conf_threshold" default="0.5" />  <!-- YOLO自身的检测置信度阈值 -->
+  
+  <!-- 坐标转换参数 -->
+  <arg name="calibration_path" default="$(find Position_Calibration)/config/calibration.yaml" />
+  <arg name="table_height" default="0.746" />
+  <arg name="object_height" default="0.085" />
+  <arg name="conf_threshold" default="0.7" />    <!-- 打印坐标的置信度阈值 -->
+  <arg name="w" default="0.0" />                 <!-- 末端绕Z轴的偏航角（弧度） -->
+  
+  <!-- 启动YOLO检测节点 -->
+  <node name="yolo_detection" pkg="yolo_package" type="yolo_landmark.py" output="screen">
+    <param name="model" value="$(arg model_path)" />
+    <param name="source" value="$(arg yolo_source)" />
+    <param name="stream" value="$(arg yolo_stream)" />
+    <param name="window_name" value="$(arg yolo_window_name)" />
+    <param name="conf_threshold" value="$(arg yolo_conf_threshold)" />
+  </node>
+  
+  <!-- 启动坐标转换节点 -->
+  <node name="visual_robot_node" pkg="visual_robot" type="visual_robot_node" output="screen">
+    <param name="calibration_path" value="$(arg calibration_path)" />
+    <param name="table_height" value="$(arg table_height)" />
+    <param name="object_height" value="$(arg object_height)" />
+    <param name="conf_threshold" value="$(arg conf_threshold)" />
+    <param name="w" value="$(arg w)" />
+  </node>
+</launch>
+

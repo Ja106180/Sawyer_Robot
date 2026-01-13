@@ -1,0 +1,36 @@
+<?xml version="1.0"?>
+<launch>
+    <!--
+        plane_calibration.launch - 平面坐标映射标定
+        
+        功能：
+        1. 启动 AprilTag 检测节点
+        2. 启动平面标定脚本
+        
+        使用方法：
+        roslaunch ApriTag_car plane_calibration.launch
+    -->
+    
+    <arg name="camera_intrinsics_path" default="" doc="相机内参文件路径"/>
+    <arg name="tag_size" default="0.05" doc="AprilTag 尺寸（米）"/>
+    
+    <arg name="image_topic" default="/camera/image_raw" doc="相机图像话题"/>
+    
+    <!-- USB 相机发布节点 -->
+    <node name="camera_publisher" pkg="ApriTag_car" type="camera_publisher.py" output="screen">
+        <param name="camera_id" value="0"/>
+        <param name="frame_rate" value="30.0"/>
+    </node>
+    
+    <!-- AprilTag 检测节点 -->
+    <node name="apriltag_detection" pkg="ApriTag_car" type="apriltag_detection.py" output="screen">
+        <param name="tag_size" value="$(arg tag_size)"/>
+        <param name="calibration_path" value="$(arg camera_intrinsics_path)"/>
+        <param name="image_topic" value="$(arg image_topic)"/>
+    </node>
+    
+    <!-- 平面标定脚本 -->
+    <node name="plane_calibration" pkg="ApriTag_car" type="plane_calibration.py" output="screen"/>
+    
+</launch>
+

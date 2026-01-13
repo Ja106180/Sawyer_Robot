@@ -1,0 +1,105 @@
+<?xml version="1.0"?>
+<launch>
+    <!-- 
+        arm_follow.launch
+        一条命令启动机械臂跟随系统
+        
+        功能：
+        1. 启动YOLO Pose识别节点（使用机械臂头部摄像头）
+        2. 启动机械臂跟随控制节点
+        
+        使用方法：
+        roslaunch arm_follow arm_follow.launch
+        
+        可选的参数覆盖（例如）：
+        roslaunch arm_follow arm_follow.launch smoothing_factor:=0.8 follow_min_angle:=60
+    -->
+    
+    <!-- 可选参数，可通过命令行覆盖 -->
+    <arg name="yolo_model" default="/home/mycar/YOLO/ultralytics-8.3.163/yolov8n-pose.pt"/>
+    <arg name="smoothing_factor" default="0.6"/>
+    <arg name="smoothing_min" default="0.2"/>
+    <arg name="smoothing_max" default="0.9"/>
+    <arg name="confidence_threshold" default="0.6"/>
+    <arg name="speed_adapt_gain" default="0.15"/>
+    <arg name="prediction_horizon" default="0.08"/>
+    <arg name="max_delta_per_cycle" default="0.25"/>
+    <arg name="j1_smoothing_factor" default="0.18"/>
+    <arg name="j1_max_delta" default="0.40"/>
+    <arg name="j1_snap_threshold" default="0.05"/>
+    <arg name="j1_down_scale" default="0.6"/>
+    <arg name="j3_smoothing_factor" default="0.12"/>
+    <arg name="j3_max_delta" default="0.60"/>
+    <arg name="j3_snap_threshold" default="0.05"/>
+
+    <arg name="j1_min" default="-1.2"/>
+    <arg name="j1_max" default="1.4"/>
+    <arg name="j3_min" default="-1.5"/>
+    <arg name="j3_max" default="1.5"/>
+    <arg name="j3_scale" default="0.8"/>
+    <arg name="j3_offset" default="0.0"/>
+    <arg name="shoulder_rel_min" default="-1.5"/>
+    <arg name="shoulder_rel_max" default="1.5"/>
+    <arg name="shoulder_gain" default="1.5"/>
+    <arg name="shoulder_metric_alpha" default="0.4"/>
+
+    <arg name="preset_j0" default="0.0"/>
+    <arg name="preset_j1" default="0.0"/>
+    <arg name="preset_j2" default="0.0"/>
+    <arg name="preset_j3" default="0.0"/>
+    <arg name="preset_j4" default="0.0"/>
+    <arg name="preset_j5" default="0.0"/>
+    <arg name="preset_j6" default="0.0"/>
+    <arg name="preset_head" default="-1.5"/>
+
+    <param name="/arm_follow/posture_ready" value="false"/>
+
+    <!-- 预设姿态（顺序移动） -->
+    <node name="arm_posture_init" pkg="arm_follow" type="posture_init.py" output="screen"
+          args="--j0 $(arg preset_j0) --j1 $(arg preset_j1) --j2 $(arg preset_j2) --j3 $(arg preset_j3) --j4 $(arg preset_j4) --j5 $(arg preset_j5) --j6 $(arg preset_j6) --head $(arg preset_head)">
+    </node>
+    
+    <!-- YOLO Pose识别节点 -->
+    <node name="yolo_inference" pkg="yolo_package" type="yolo_inference.py" output="screen">
+        <!-- 使用机械臂头部摄像头 -->
+        <param name="source" value="1"/>
+        <!-- YOLO模型路径 -->
+        <param name="model" value="$(arg yolo_model)"/>
+        <!-- 窗口名称 -->
+        <param name="window_name" value="YOLO Inference - Arm Follow"/>
+        <!-- 持续流模式 -->
+        <param name="stream" value="true"/>
+    </node>
+    
+    <!-- 机械臂跟随控制节点 -->
+    <node name="arm_follow_node" pkg="arm_follow" type="arm_follow_node" output="screen">
+        <param name="confidence_threshold" value="$(arg confidence_threshold)"/>
+        <param name="smoothing_factor" value="$(arg smoothing_factor)"/>
+        <param name="smoothing_min" value="$(arg smoothing_min)"/>
+        <param name="smoothing_max" value="$(arg smoothing_max)"/>
+        <param name="speed_adapt_gain" value="$(arg speed_adapt_gain)"/>
+        <param name="prediction_horizon" value="$(arg prediction_horizon)"/>
+        <param name="max_delta_per_cycle" value="$(arg max_delta_per_cycle)"/>
+        <param name="j1_smoothing_factor" value="$(arg j1_smoothing_factor)"/>
+        <param name="j1_max_delta" value="$(arg j1_max_delta)"/>
+        <param name="j1_snap_threshold" value="$(arg j1_snap_threshold)"/>
+        <param name="j1_down_scale" value="$(arg j1_down_scale)"/>
+        <param name="j3_smoothing_factor" value="$(arg j3_smoothing_factor)"/>
+        <param name="j3_max_delta" value="$(arg j3_max_delta)"/>
+        <param name="j3_snap_threshold" value="$(arg j3_snap_threshold)"/>
+
+        <param name="j1_min" value="$(arg j1_min)"/>
+        <param name="j1_max" value="$(arg j1_max)"/>
+        <param name="j3_min" value="$(arg j3_min)"/>
+        <param name="j3_max" value="$(arg j3_max)"/>
+        <param name="j3_scale" value="$(arg j3_scale)"/>
+        <param name="j3_offset" value="$(arg j3_offset)"/>
+        <param name="shoulder_rel_min" value="$(arg shoulder_rel_min)"/>
+        <param name="shoulder_rel_max" value="$(arg shoulder_rel_max)"/>
+        <param name="shoulder_gain" value="$(arg shoulder_gain)"/>
+        <param name="shoulder_metric_alpha" value="$(arg shoulder_metric_alpha)"/>
+        <param name="wait_posture_ready" value="true"/>
+    </node>
+    
+</launch>
+

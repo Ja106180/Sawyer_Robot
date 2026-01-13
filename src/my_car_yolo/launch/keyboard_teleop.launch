@@ -1,0 +1,34 @@
+<?xml version="1.0"?>
+<launch>
+    <!--
+        keyboard_teleop.launch
+        使用键盘控制小车运动（无需视觉）
+
+        使用方法：
+        1. 确保 ESP32 已上电，并能通过 rosserial TCP 连接
+        2. 运行：
+           roslaunch my_car_yolo keyboard_teleop.launch
+        3. 在终端中使用按键：
+           - w/s : 前进/后退
+           - a/d : 左转/右转（原地）
+           - x 或 空格 : 停止
+           - q : 退出节点
+    -->
+
+    <!-- rosserial TCP 节点，负责和 ESP32 通信 -->
+    <arg name="rosserial_tcp_port" default="11411" />
+
+    <node name="rosserial_tcp" pkg="rosserial_python" type="serial_node.py"
+          args="tcp $(arg rosserial_tcp_port)" output="screen"/>
+
+    <!-- 键盘控制节点（C++） -->
+    <node name="keyboard_teleop_node" pkg="my_car_yolo" type="keyboard_teleop_node" output="screen">
+        <!-- 速度参数可根据实际需要调整 -->
+        <param name="cmd_vel_topic" value="/my_car_yolo/cmd_vel"/>
+        <param name="linear_speed" value="0.08"/>   <!-- 前进/后退线速度 (m/s) -->
+        <param name="angular_speed" value="0.4"/>   <!-- 原地转向角速度 (rad/s，已调小) -->
+    </node>
+
+</launch>
+
+

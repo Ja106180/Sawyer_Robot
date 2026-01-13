@@ -1,0 +1,8 @@
+prefix=/home/mycar/catkin_ws/install
+
+Name: arm_follow
+Description: Description of arm_follow
+Version: 0.0.0
+Cflags: -I${prefix}/include
+Libs: -L${prefix}/lib 
+Requires: geometry_msgs intera_core_msgs message_runtime roscpp rospy sensor_msgs std_msgs

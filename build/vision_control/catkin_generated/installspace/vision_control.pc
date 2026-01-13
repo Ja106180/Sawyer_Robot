@@ -1,0 +1,8 @@
+prefix=/home/mycar/catkin_ws/install
+
+Name: vision_control
+Description: Description of vision_control
+Version: 0.0.0
+Cflags: 
+Libs: -L${prefix}/lib 
+Requires: 

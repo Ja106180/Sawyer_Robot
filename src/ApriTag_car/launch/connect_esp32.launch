@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<launch>
+    <!--
+        connect_esp32.launch - 仅连接ESP32，用于测试
+        使用方法：
+        1. 确保 ESP32 已上电并连接到WiFi
+        2. 运行：roslaunch ApriTag_car connect_esp32.launch
+    -->
+    
+    <!-- rosserial TCP节点，负责和ESP32通信 -->
+    <arg name="rosserial_tcp_port" default="11411" />
+    
+    <node name="rosserial_tcp" pkg="rosserial_python" type="serial_node.py"
+          args="tcp $(arg rosserial_tcp_port)" output="screen"/>
+    
+</launch>
+

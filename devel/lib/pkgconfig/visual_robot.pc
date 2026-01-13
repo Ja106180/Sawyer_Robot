@@ -1,0 +1,8 @@
+prefix=/home/mycar/catkin_ws/devel
+
+Name: visual_robot
+Description: Description of visual_robot
+Version: 0.0.0
+Cflags: 
+Libs: -L${prefix}/lib 
+Requires: arm_follow geometry_msgs roscpp rospy roslib std_msgs tf2

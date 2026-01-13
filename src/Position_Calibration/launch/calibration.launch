@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<launch>
+  <!-- 标定参数 -->
+  <arg name="model_path" default="/home/mycar/YOLO/ultralytics-8.3.163/yolov8n_landmark.pt" />
+  <arg name="camera_topic" default="/io/internal_camera/head_camera/image_rect_color" />
+  <arg name="config_path" default="$(find Position_Calibration)/config/calibration.yaml" />
+  <arg name="table_height" default="0.746" />
+  <arg name="conf_threshold" default="0.5" />
+  
+  <!-- 启动标定节点 -->
+  <node name="position_calibration" pkg="Position_Calibration" type="position.py" output="screen">
+    <param name="model" value="$(arg model_path)" />
+    <param name="camera_topic" value="$(arg camera_topic)" />
+    <param name="config_path" value="$(arg config_path)" />
+    <param name="table_height" value="$(arg table_height)" />
+    <param name="conf_threshold" value="$(arg conf_threshold)" />
+  </node>
+</launch>
+

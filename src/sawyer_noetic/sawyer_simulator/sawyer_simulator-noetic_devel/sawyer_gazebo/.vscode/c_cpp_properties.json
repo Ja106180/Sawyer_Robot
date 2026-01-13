@@ -1,0 +1,31 @@
+{
+  "configurations": [
+    {
+      "browse": {
+        "databaseFilename": "${workspaceFolder}/.vscode/browse.vc.db",
+        "limitSymbolsToIncludedHeaders": false
+      },
+      "includePath": [
+        "/home/cothink/catkin_ws/devel/include/**",
+        "/opt/ros/melodic/include/**",
+        "/home/cothink/catkin_ws/src/baxter_melodic/moveit_robots-kinetic-devel/baxter/baxter_ikfast_left_arm_plugin/include/**",
+        "/home/cothink/catkin_ws/src/baxter_melodic/moveit_robots-kinetic-devel/baxter/baxter_ikfast_right_arm_plugin/include/**",
+        "/home/cothink/catkin_ws/src/baxter_melodic/baxter_simulator-noetic-devel/baxter_sim_controllers/include/**",
+        "/home/cothink/catkin_ws/src/baxter_melodic/baxter_simulator-noetic-devel/baxter_sim_hardware/include/**",
+        "/home/cothink/catkin_ws/src/baxter_melodic/baxter_simulator-noetic-devel/baxter_sim_io/include/**",
+        "/home/cothink/catkin_ws/src/baxter_melodic/baxter_simulator-noetic-devel/baxter_sim_kinematics/include/**",
+        "/home/cothink/catkin_ws/src/sawyer_melodic/sawyer_simulator/sawyer_simulator-noetic_devel/sawyer_gazebo/include/**",
+        "/home/cothink/catkin_ws/src/sawyer_melodic/sawyer_simulator/sawyer_simulator-noetic_devel/sawyer_hardware_interface/include/**",
+        "/home/cothink/catkin_ws/src/sawyer_melodic/sawyer_simulator/sawyer_simulator-noetic_devel/sawyer_sim_controllers/include/**",
+        "/home/cothink/catkin_ws/src/sawyer_melodic/sns_ik/sns_ik_lib/include/**",
+        "/usr/include/**"
+      ],
+      "name": "ROS",
+      "intelliSenseMode": "gcc-x64",
+      "compilerPath": "/usr/bin/gcc",
+      "cStandard": "gnu11",
+      "cppStandard": "c++14"
+    }
+  ],
+  "version": 4
+}

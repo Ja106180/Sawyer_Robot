@@ -1,0 +1,8 @@
+prefix=/home/mycar/catkin_ws/devel
+
+Name: ApriTag_car
+Description: Description of ApriTag_car
+Version: 0.0.0
+Cflags: 
+Libs: -L${prefix}/lib 
+Requires: geometry_msgs roscpp rospack rospy sensor_msgs std_msgs tf2 tf2_ros

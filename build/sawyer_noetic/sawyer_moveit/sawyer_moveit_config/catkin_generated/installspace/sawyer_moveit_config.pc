@@ -1,0 +1,8 @@
+prefix=/home/mycar/catkin_ws/install
+
+Name: sawyer_moveit_config
+Description: Description of sawyer_moveit_config
+Version: 5.3.0
+Cflags: 
+Libs: -L${prefix}/lib 
+Requires: 

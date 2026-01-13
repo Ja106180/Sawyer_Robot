@@ -1,0 +1,70 @@
+<?xml version="1.0"?>
+<launch>
+    <!-- 
+        yolo_car.launch
+        一条命令启动YOLO物体检测节点
+        
+        功能：
+        1. 自动启动roscore（如果未运行）
+        2. 启动YOLO物体检测节点（使用USB摄像头）
+        
+        使用方法：
+        roslaunch yolo_car yolo_car.launch
+        
+        可选的参数覆盖（例如）：
+        roslaunch yolo_car yolo_car.launch model:=/path/to/model.pt conf_threshold:=0.3
+    -->
+    
+    <!-- 可选参数，可通过命令行覆盖 -->
+    <arg name="model" default="" doc="YOLO模型文件路径，如果为空则使用默认路径 models/yolov8n_label.pt"/>
+    <arg name="conf_threshold" default="0.25" doc="检测置信度阈值"/>
+    <arg name="window_name" default="YOLO Car Detection" doc="显示窗口名称"/>
+    <arg name="source" default="0" doc="摄像头源，0表示USB摄像头"/>
+    <arg name="rosserial_tcp_port" default="11411" doc="rosserial TCP 端口（供ESP32连接）"/>
+    
+    <!-- 启动YOLO检测节点 -->
+    <node name="yolo_car_detection" pkg="yolo_car" type="yolo_car_detection.py" output="screen">
+        <!-- 模型路径：如果为空字符串，Python代码会使用默认路径 -->
+        <param name="model" value="$(arg model)"/>
+        <param name="conf_threshold" value="$(arg conf_threshold)"/>
+        <param name="window_name" value="$(arg window_name)"/>
+        <param name="source" value="$(arg source)"/>
+    </node>
+    
+    <!-- 启动控制节点：矩形巡线 -->
+    <node name="yolo_car_control" pkg="yolo_car" type="yolo_car_control.py" output="screen">
+        <!-- 输出的 cmd_vel 重映射为 raw，供 yaw_filter 处理 -->
+        <remap from="/yolo_car/cmd_vel" to="/yolo_car/cmd_vel_raw"/>
+        <!-- PID 参数 -->
+        <param name="k_ang_p" value="0.6"/>
+        <param name="k_ang_i" value="0.0"/>
+        <param name="k_ang_d" value="0.0"/>
+        <param name="k_ang_i_limit" value="0.3"/>
+        <param name="edge_deadband" value="12.0"/>
+        <param name="mid_deadband" value="60.0"/>
+        <param name="switch_threshold" value="15.0"/>
+        <param name="base_linear_speed" value="0.05"/>
+        <param name="max_linear_vel" value="0.15"/>
+        <param name="max_angular_vel" value="0.05"/>
+        <param name="angular_scale" value="0.12"/>
+        <param name="invert_x_control" value="false"/>
+        <param name="control_rate" value="20.0"/>
+        <param name="lost_timeout" value="3.0"/>
+    </node>
+
+    <!-- 航向抑制过滤节点：使用 IMU gyro.z 积分做 yaw 保持 -->
+    <node name="yolo_car_yaw_filter" pkg="yolo_car" type="yolo_car_yaw_filter.py" output="screen">
+        <param name="k_yaw" value="0.6"/>
+        <param name="yaw_deadband" value="0.05"/>
+        <param name="max_ang" value="0.2"/>
+        <param name="straight_lin_min" value="0.03"/>
+        <param name="straight_ang_deadband" value="0.05"/>
+        <param name="spin_limit" value="0.8"/>
+    </node>
+
+    <!-- 启动rosserial TCP节点，供ESP32通过WiFi连接 -->
+    <node name="rosserial_tcp" pkg="rosserial_python" type="serial_node.py"
+          args="tcp $(arg rosserial_tcp_port)" output="screen"/>
+    
+</launch>
+

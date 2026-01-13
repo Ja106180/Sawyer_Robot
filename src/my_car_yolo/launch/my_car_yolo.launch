@@ -1,0 +1,77 @@
+<?xml version="1.0"?>
+<launch>
+    <!--
+        my_car_yolo.launch
+        一条命令启动完整的my_car_yolo系统
+
+        功能：
+        1. 启动YOLO检测节点（Python）
+        2. 启动YOLO主控制节点（C++）
+        3. 启动IMU数据处理器节点（Python）
+        4. 启动里程计处理器节点（Python）
+        5. 启动rosserial TCP节点（ESP32通信）
+
+        使用方法：
+        roslaunch my_car_yolo my_car_yolo.launch
+
+        可选参数：
+        - model_path: YOLO模型路径
+        - calibration_path: 标定文件路径
+    -->
+
+    <!-- 参数定义 -->
+    <arg name="model_path" default="" doc="YOLO模型文件路径"/>
+    <arg name="calibration_path" default="" doc="手眼标定文件路径"/>
+    <arg name="rosserial_tcp_port" default="11411" doc="rosserial TCP端口"/>
+
+    <!-- YOLO检测节点 (Python)：用于检测小车标志并发布 /my_car_yolo/detections -->
+    <node name="yolo_detection" pkg="my_car_yolo" type="yolo_detection.py" output="screen">
+        <param name="model" value="$(arg model_path)"/>
+        <param name="conf_threshold" value="0.8"/>
+        <param name="window_name" value="My Car YOLO Detection"/>
+        <param name="source" value="0"/>
+    </node>
+
+    <!-- YOLO主控制节点 (C++) -->
+    <node name="my_car_yolo_node" pkg="my_car_yolo" type="my_car_yolo_node" output="screen">
+        <param name="calibration_path" value="$(arg calibration_path)"/>
+
+        <!-- 控制参数（全局变量，方便修改） -->
+        <param name="arrival_threshold" value="20.0"/>           <!-- 到达距离阈值（像素） -->
+        <param name="stable_frames_required" value="5"/>        <!-- 需要连续稳定帧数 -->
+        <param name="hold_duration" value="2.0"/>               <!-- 到达后保持时间（秒） -->
+        <param name="conf_threshold" value="0.8"/>              <!-- YOLO置信度阈值 -->
+        <param name="target_speed" value="0.1"/>                <!-- 目标速度（m/s） -->
+    </node>
+
+    <!-- IMU处理器节点 (Python) -->
+    <node name="imu_processor" pkg="my_car_yolo" type="imu_processor.py" output="screen">
+        <!-- IMU处理参数 -->
+        <param name="sample_rate" value="50.0"/>                <!-- IMU采样率 (Hz) -->
+        <param name="gyro_bias_alpha" value="0.001"/>           <!-- 零偏自适应系数 -->
+        <param name="gyro_static_thresh" value="0.05"/>        <!-- 静止阈值 (rad/s) -->
+        <param name="low_pass_alpha" value="0.3"/>              <!-- 低通滤波系数 -->
+        <param name="use_kalman" value="true"/>                 <!-- 是否使用卡尔曼滤波 -->
+    </node>
+
+    <!-- 里程计处理器节点 (Python) -->
+    <node name="odometry_processor" pkg="my_car_yolo" type="odometry_processor.py" output="screen">
+        <!-- 编码器参数 -->
+        <param name="ticks_per_rev" value="1320.0"/>           <!-- 每转脉冲数 (JGB-520: 11×4×30) -->
+        <param name="wheel_radius" value="0.067"/>            <!-- 轮子半径 (m) 67mm -->
+        <param name="wheel_base" value="0.194"/>              <!-- 轮距 (m) 194mm -->
+        <param name="update_rate" value="20.0"/>               <!-- 更新频率 (Hz) -->
+
+        <!-- 去抖参数 -->
+        <param name="debounce_count" value="2"/>               <!-- 连续检测次数 -->
+        <param name="max_velocity" value="1.0"/>               <!-- 最大速度 (m/s) -->
+
+        <!-- 滤波参数 -->
+        <param name="velocity_filter_alpha" value="0.3"/>      <!-- 速度滤波系数 -->
+        <param name="use_complementary" value="true"/>         <!-- 使用互补滤波 -->
+    </node>
+
+    <!-- rosserial TCP节点，供ESP32通过WiFi连接 -->
+    <node name="rosserial_tcp" pkg="rosserial_python" type="serial_node.py"
+          args="tcp $(arg rosserial_tcp_port)" output="screen"/>
+</launch>

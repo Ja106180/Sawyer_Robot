@@ -1,0 +1,64 @@
+<?xml version="1.0"?>
+<launch>
+    <!--
+        apriltag_car.launch - AprilTag 小车控制系统主启动文件
+        
+        功能：
+        1. 启动 AprilTag 检测节点
+        2. 启动控制节点（3点循环）
+        3. 启动 IMU 处理器（如果需要）
+        4. 启动 rosserial TCP（ESP32通信）
+        
+        使用方法：
+        roslaunch ApriTag_car apriltag_car.launch
+    -->
+    
+    <!-- 参数定义 -->
+    <arg name="camera_intrinsics_path" default="" doc="相机内参文件路径"/>
+    <arg name="plane_calibration_path" default="" doc="平面标定文件路径"/>
+    <arg name="image_topic" default="/camera/image_raw" doc="相机图像话题"/>
+    <arg name="tag_size" default="0.05" doc="AprilTag 尺寸（米）"/>
+    <arg name="rosserial_tcp_port" default="11411" doc="rosserial TCP端口"/>
+    
+    <!-- USB 相机发布节点 -->
+    <node name="camera_publisher" pkg="ApriTag_car" type="camera_publisher.py" output="screen">
+        <param name="camera_id" value="0"/>
+        <param name="frame_rate" value="30.0"/>
+    </node>
+    
+    <!-- AprilTag 检测节点 -->
+    <node name="apriltag_detection" pkg="ApriTag_car" type="apriltag_detection.py" output="screen">
+        <param name="tag_size" value="$(arg tag_size)"/>
+        <param name="calibration_path" value="$(arg camera_intrinsics_path)"/>
+        <param name="image_topic" value="$(arg image_topic)"/>
+    </node>
+    
+    <!-- 控制节点 -->
+    <node name="apriltag_control_node" pkg="ApriTag_car" type="apriltag_control_node" output="screen">
+        <param name="plane_calibration_path" value="$(arg plane_calibration_path)"/>
+        
+        <!-- 控制参数 -->
+        <param name="arrival_threshold_meters" value="0.08"/>      <!-- 到达距离阈值（米） -->
+        <param name="linear_kp" value="0.5"/>                     <!-- 线速度比例系数 -->
+        <param name="angular_kp" value="0.35"/>                   <!-- 角速度比例系数 -->
+        <param name="angular_kd" value="0.15"/>                   <!-- 角速度阻尼系数 -->
+        <param name="angular_dir" value="-1.0"/>                   <!-- 转向方向（+1/-1） -->
+        <param name="max_linear_speed" value="0.12"/>             <!-- 最大线速度（m/s） -->
+        <param name="max_angular_speed" value="0.4"/>             <!-- 最大角速度（rad/s） -->
+    </node>
+    
+    <!-- IMU 处理器节点（如果需要） -->
+    <node name="imu_processor" pkg="my_car_yolo" type="imu_processor.py" output="screen">
+        <param name="sample_rate" value="50.0"/>
+        <param name="gyro_bias_alpha" value="0.001"/>
+        <param name="gyro_static_thresh" value="0.05"/>
+        <param name="low_pass_alpha" value="0.3"/>
+        <param name="use_kalman" value="true"/>
+    </node>
+    
+    <!-- rosserial TCP节点，供ESP32通过WiFi连接 -->
+    <node name="rosserial_tcp" pkg="rosserial_python" type="serial_node.py"
+          args="tcp $(arg rosserial_tcp_port)" output="screen"/>
+    
+</launch>
+

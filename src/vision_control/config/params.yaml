@@ -1,0 +1,17 @@
+# 视觉控制节点参数配置
+
+# 摄像头参数
+camera_id: 0              # USB摄像头ID
+frame_width: 640          # 图像宽度
+frame_height: 480         # 图像高度
+fps: 30.0                 # 帧率
+
+# 手势识别参数
+swipe_threshold: 30.0     # 滑动速度阈值（像素/帧）
+swipe_frames: 5           # 连续帧数确认滑动
+zoom_threshold: 0.15      # 放大/缩小变化阈值
+zoom_speed_threshold: 0.05 # 变化速度阈值
+
+# UI参数
+ui_highlight_duration: 1.0 # UI元素高亮持续时间（秒）
+

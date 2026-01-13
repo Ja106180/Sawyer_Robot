@@ -1,0 +1,67 @@
+<?xml version="1.0"?>
+<launch>
+    <!-- 
+        balance_car.launch - 平衡小车LQR控制系统
+        
+        功能：
+        1. 启动rosserial TCP连接（连接ESP32）
+        2. ESP32直接发布IMU角度数据（互补滤波已在ESP32完成）
+        3. 启动LQR平衡控制节点（起立+平衡+键盘控制）
+    -->
+    
+    <!-- 参数服务器：物理参数 -->
+    <param name="wheel_radius" value="0.0335"/>      <!-- 轮子半径：33.5mm -->
+    <param name="wheel_base" value="0.194"/>          <!-- 轮距：194mm -->
+    <param name="center_height" value="0.075"/>       <!-- 重心高度：75mm -->
+    <param name="mass" value="1.5"/>                  <!-- 质量：1.5kg -->
+    <param name="ticks_per_rev" value="1320.0"/>      <!-- 编码器每转脉冲数 -->
+    
+    <!-- rosserial TCP节点，供ESP32通过WiFi连接 -->
+    <arg name="rosserial_tcp_port" default="11411" doc="rosserial TCP端口"/>
+    <node name="rosserial_tcp" pkg="rosserial_python" type="serial_node.py"
+          args="tcp $(arg rosserial_tcp_port)" output="screen"/>
+
+    <!-- IMU数据处理链 -->
+    <!-- 1. IMU桥接节点：将ESP32的Vector3消息组合成标准IMU消息 -->
+    <node name="imu_bridge_node" pkg="ApriTag_car" type="imu_bridge_node" output="screen">
+        <remap from="/ApriTag_car/imu_data" to="/imu/data_raw"/>
+    </node>
+
+    <!-- 2. Madgwick滤波节点：进行IMU姿态融合 -->
+    <node name="imu_filter_madgwick" pkg="imu_filter_madgwick" type="imu_filter_node" output="screen">
+        <param name="use_magnetic_field_msg" value="false"/>
+        <param name="publish_tf" value="false"/>
+        <param name="gain" value="0.5"/>
+        <param name="zeta" value="0.0"/>
+    </node>
+
+    <!-- 3. 姿态转换节点：将四元数转换为欧拉角 -->
+    <node name="imu_orientation_to_angles_node" pkg="ApriTag_car" type="imu_orientation_to_angles_node" output="screen"/>
+
+    <!-- LQR平衡控制节点 -->
+    <node name="balance_control_node" pkg="ApriTag_car" type="balance_control_node" output="screen">
+        <!-- 控制参数 -->
+        <param name="control_freq" value="100.0"/>          <!-- 控制频率：100Hz -->
+        <param name="max_velocity" value="0.3"/>            <!-- 最大速度：0.3 m/s -->
+        
+        <!-- 起立控制参数 -->
+        <param name="standup_max_vel" value="0.15"/>        <!-- 起立最大速度：0.15 m/s -->
+        <param name="standup_medium_vel" value="0.08"/>     <!-- 起立中等速度：0.08 m/s -->
+        <param name="standup_angle_thresh1" value="0.1745"/> <!-- 10度（平躺检测） -->
+        <param name="standup_angle_thresh2" value="1.0472"/> <!-- 60度 -->
+        <param name="standup_angle_thresh3" value="1.4835"/>  <!-- 85度（切换到平衡模式） -->
+        
+        <!-- 安全保护参数 -->
+        <param name="max_pitch_error" value="0.7854"/>      <!-- 45度（最大倾斜角） -->
+        <param name="imu_timeout" value="0.1"/>              <!-- IMU超时：100ms -->
+        
+        <!-- 键盘控制参数 -->
+        <param name="keyboard_linear_speed" value="0.1"/>    <!-- 键盘前进/后退速度：0.1 m/s -->
+        <param name="keyboard_angular_speed" value="0.05"/>  <!-- 键盘转向速度：0.05 rad/s -->
+    </node>
+    
+    <!-- 可选：RViz可视化（如果需要） -->
+    <!-- <node name="rviz" pkg="rviz" type="rviz" args="-d $(find ApriTag_car)/rviz/balance_car.rviz" if="$(arg use_rviz)"/> -->
+    
+</launch>
+

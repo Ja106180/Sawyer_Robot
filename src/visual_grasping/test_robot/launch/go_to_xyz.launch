@@ -1,0 +1,13 @@
+<launch>
+  <arg name="x" default="0.50" />
+  <arg name="y" default="0.00" />
+  <arg name="z" default="0.70" />
+  <arg name="w" default="0.00" />  <!-- yaw angle (rad) around vertical axis -->
+
+  <node name="go_to_xyz" pkg="test_robot" type="go_to_xyz" output="screen">
+    <param name="x" value="$(arg x)" />
+    <param name="y" value="$(arg y)" />
+    <param name="z" value="$(arg z)" />
+    <param name="w" value="$(arg w)" />
+  </node>
+</launch>
