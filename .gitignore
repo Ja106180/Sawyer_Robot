@@ -3,3 +3,6 @@ devel/
 install/
 .vscode/
 *.log
+src/sawyer_noetic/sawyer_simulator/sawyer_simulator-noetic_devel/sawyer_gazebo/.vscode/browse.vc.db
+
+src/Sawyer_SDK_Moveit_GazeboSimulator_noetic.zip
