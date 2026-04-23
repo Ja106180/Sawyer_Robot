@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenClaw Sawyer 控制台</title>
+    <!-- 引入 ROS 相关库 -->
+    <script src="https://cdn.jsdelivr.net/npm/roslib@1/build/roslib.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/eventemitter2@6/lib/eventemitter2.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/ros3d@0/build/ros3d.min.js"></script>
+    <link rel="stylesheet" href="css/style.css">
+    
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --panel-bg: rgba(30, 41, 59, 0.7);
+            --accent-color: #38bdf8;
+            --danger-color: #ef4444;
+            --success-color: #22c55e;
+            --text-color: #f8fafc;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', -apple-system, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            overflow: hidden;
+            display: flex;
+            height: 100vh;
+        }
+
+        .sidebar {
+            width: 350px;
+            background: var(--panel-bg);
+            backdrop-filter: blur(10px);
+            border-right: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            gap: 20px;
+        }
+
+        .header {
+            margin-bottom: 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding-bottom: 10px;
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+            background: linear-gradient(90deg, #38bdf8, #818cf8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+
+        .card h2 {
+            font-size: 16px;
+            margin-top: 0;
+            border-left: 4px solid var(--accent-color);
+            padding-left: 10px;
+        }
+
+        .camera-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            height: 300px;
+        }
+
+        .video-box {
+            background: #000;
+            border-radius: 8px;
+            overflow: hidden;
+            position: relative;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .video-box img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .video-label {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.6);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        .viz-box {
+            flex: 1;
+            background: #000;
+            border-radius: 12px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .btn {
+            background: var(--accent-color);
+            color: #000;
+            border: none;
+            padding: 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .btn:hover {
+            opacity: 0.8;
+            transform: translateY(-2px);
+        }
+
+        .btn.active {
+            background: var(--success-color);
+            color: #fff;
+        }
+
+        .slider-item {
+            margin-bottom: 12px;
+        }
+
+        .slider-header {
+            display: flex;
+            justify-content: space-between;
+            font-size: 13px;
+            color: rgba(255,255,255,0.6);
+            margin-bottom: 5px;
+        }
+
+        input[type=range] {
+            width: 100%;
+            height: 6px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 5px;
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            background: var(--accent-color);
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .status-badge {
+            font-size: 12px;
+            padding: 2px 8px;
+            border-radius: 10px;
+            background: var(--danger-color);
+        }
+
+        .status-badge.online {
+            background: var(--success-color);
+        }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <div class="header">
+            <h1>Sawyer <span>Robot</span></h1>
+            <div id="connection-status" class="status-badge">ROS 离线</div>
+        </div>
+
+        <div class="card">
+            <h2>功能模式</h2>
+            <div class="control-group">
+                <button id="btn-grasp" class="btn">开启 视觉抓取</button>
+                <button id="btn-follow" class="btn">开启 手臂跟随</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>关节控制</h2>
+            <div id="sliders-container">
+                <!-- Sliders for J0-J6 -->
+                <div class="slider-item">
+                    <div class="slider-header"><span>J0 (Base)</span> <span id="val-j0">0.00</span></div>
+                    <input type="range" id="slip-j0" min="-3.05" max="3.05" step="0.01" value="0">
+                </div>
+                <div class="slider-item">
+                    <div class="slider-header"><span>J1 (Shoulder)</span> <span id="val-j1">0.00</span></div>
+                    <input type="range" id="slip-j1" min="-3.8" max="2.2" step="0.01" value="-0.5">
+                </div>
+                <div class="slider-item">
+                    <div class="slider-header"><span>J2 (Elbow)</span> <span id="val-j2">0.00</span></div>
+                    <input type="range" id="slip-j2" min="-3.04" max="3.04" step="0.01" value="0">
+                </div>
+                <div class="slider-item">
+                    <div class="slider-header"><span>J3 (Elbow Rot)</span> <span id="val-j3">0.00</span></div>
+                    <input type="range" id="slip-j3" min="-3.04" max="3.04" step="0.01" value="1.5">
+                </div>
+                <div class="slider-item">
+                    <div class="slider-header"><span>J4 (Wrist)</span> <span id="val-j4">0.00</span></div>
+                    <input type="range" id="slip-j4" min="-2.97" max="2.97" step="0.01" value="0">
+                </div>
+                <div class="slider-item">
+                    <div class="slider-header"><span>J5 (Wrist Rot)</span> <span id="val-j5">0.00</span></div>
+                    <input type="range" id="slip-j5" min="-2.97" max="2.97" step="0.01" value="1.5">
+                </div>
+                <div class="slider-item">
+                    <div class="slider-header"><span>J6 (Hand)</span> <span id="val-j6">0.00</span></div>
+                    <input type="range" id="slip-j6" min="-4.7" max="4.7" step="0.01" value="0">
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>头部与夹爪</h2>
+            <div class="slider-item">
+                <div class="slider-header"><span>头部旋转 (Pan)</span> <span id="val-head">0.00</span></div>
+                <input type="range" id="slip-head" min="-5.0" max="1.5" step="0.01" value="0">
+            </div>
+            <button id="btn-gripper" class="btn" style="width: 100%; margin-top: 10px;">打开 夹爪</button>
+        </div>
+    </div>
+
+    <div class="main-content">
+        <div class="camera-grid">
+            <div class="video-box">
+                <span class="video-label">头部摄像头 (Global)</span>
+                <img id="video-head" src="" alt="等待视频流...">
+            </div>
+            <div class="video-box">
+                <span class="video-label">末端摄像头 (Hand)</span>
+                <img id="video-hand" src="" alt="等待视频流...">
+            </div>
+        </div>
+        <div id="viz-container" class="viz-box">
+            <!-- 3D Visualization will be here -->
+        </div>
+    </div>
+
+    <script src="js/main.js"></script>
+</body>
+</html>

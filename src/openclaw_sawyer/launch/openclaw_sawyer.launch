@@ -1,0 +1,21 @@
+<launch>
+  <!-- 1. Web Hosting and Skill Server -->
+  <node name="web_host_sawyer" pkg="openclaw_sawyer" type="web_host.py" output="screen">
+    <param name="port" value="8000" />
+  </node>
+
+  <node name="sawyer_skill_server" pkg="openclaw_sawyer" type="sawyer_skill_server.py" output="screen" />
+  <node name="vision_insight_skill" pkg="openclaw_sawyer" type="vision_insight_skill.py" output="screen" />
+
+  <!-- 2. ROSBridge (Required for Web Interaction) -->
+  <include file="$(find rosbridge_server)/launch/rosbridge_websocket.launch" />
+
+  <!-- 3. Web Video Server (Required for Camera Streaming) -->
+  <node name="web_video_server" pkg="web_video_server" type="web_video_server" output="screen">
+    <param name="port" value="8080" />
+  </node>
+
+  <!-- 4. Sawyer Robot State Publisher (Required for 3D Viz) -->
+  <!-- Note: We assume the robot description is already loaded via intera.sh and standard bringup -->
+  <!-- If needed, it can be included here -->
+</launch>
