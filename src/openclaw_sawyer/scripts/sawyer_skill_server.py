@@ -52,18 +52,46 @@ class SawyerSkillServer:
         except Exception as e:
             rospy.logwarn("Could not connect to Sawyer Head: %s", e)
         
+        # Camera control (Attempt to open both)
+        try:
+            self.cameras = intera_interface.Cameras()
+            if self.cameras.verify_camera_exists("head_camera"):
+                self.cameras.start_streaming("head_camera")
+                rospy.loginfo("Head camera started.")
+            if self.cameras.verify_camera_exists("right_hand_camera"):
+                self.cameras.start_streaming("right_hand_camera")
+                rospy.loginfo("Wrist camera started.")
+        except Exception as e:
+            rospy.logwarn("Could not initialize cameras: %s", e)
+
         # Services for Toggles (ROOT NAMES)
         rospy.Service("/sawyer_grasp", SetBool, self.handle_grasp_toggle)
         rospy.Service("/sawyer_follow", SetBool, self.handle_follow_toggle)
         rospy.Service("/sawyer_trigger", Trigger, self.handle_trigger_grasp)
         
         # Topics (ROOT NAMES)
-        self.joint_cmd_pub = rospy.Publisher("/robot/limb/right/joint_command", JointCommand, queue_size=1)
+        self.joint_state_pub = rospy.Publisher("/sawyer_state", JointState, queue_size=1)
         self.joint_sub = rospy.Subscriber("/sawyer_joints", JointState, self.handle_joint_command)
         self.head_sub = rospy.Subscriber("/sawyer_head", JointState, self.handle_head_command)
         self.gripper_sub = rospy.Subscriber("/sawyer_gripper", Bool, self.handle_gripper_command)
 
+        # Timer to sync state back to web (10Hz)
+        rospy.Timer(rospy.Duration(0.1), self.sync_state)
+
         rospy.loginfo("Sawyer Skill Server initialized.")
+
+    def sync_state(self, event):
+        """Publish current robot state for Web UI syncing."""
+        if self.limb is None:
+            return
+        
+        state = JointState()
+        state.header.stamp = rospy.Time.now()
+        names = self.limb.joint_names()
+        angles = [self.limb.joint_angle(name) for name in names]
+        state.name = names
+        state.position = angles
+        self.joint_state_pub.publish(state)
 
     def handle_grasp_toggle(self, req):
         """Toggle autonomous grasping script."""
