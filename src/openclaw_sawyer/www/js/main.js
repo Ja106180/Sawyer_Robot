@@ -3,23 +3,41 @@ window.onload = function () {
     const ros = new ROSLIB.Ros({ url: `ws://${hostname}:9090` });
 
     const statusBadge = document.getElementById('connection-status');
+    const debugLog = document.getElementById('debug-log');
+
+    function log(msg) {
+        const div = document.createElement('div');
+        div.innerText = `[${new Date().toLocaleTimeString()}] ${msg}`;
+        debugLog.appendChild(div);
+        debugLog.scrollTop = debugLog.scrollHeight;
+        console.log(msg);
+    }
+
     ros.on('connection', () => {
         statusBadge.innerText = 'ROS 在线';
         statusBadge.className = 'status-badge online';
+        log('成功连接到 ROSBridge');
     });
-    ros.on('error', () => {
+
+    ros.on('error', (error) => {
         statusBadge.innerText = '连接错误';
         statusBadge.className = 'status-badge';
+        log('ROS 连接错误: ' + JSON.stringify(error));
     });
+
     ros.on('close', () => {
         statusBadge.innerText = 'ROS 离线';
         statusBadge.className = 'status-badge';
+        log('ROS 连接已关闭');
     });
 
     // 1. Video Feeds
-    // Using web_video_server (default port 8080)
-    document.getElementById('video-head').src = `http://${hostname}:8080/stream?topic=/io/internal_camera/head_camera/image_rect_color&type=mjpeg&quality=30`;
-    document.getElementById('video-hand').src = `http://${hostname}:8080/stream?topic=/io/internal_camera/right_hand_camera/image_rect_color&type=mjpeg&quality=30`;
+    log('正在请求视频流...');
+    const headUrl = `http://${hostname}:8080/stream?topic=/io/internal_camera/head_camera/image_rect_color&type=mjpeg&quality=30`;
+    const handUrl = `http://${hostname}:8080/stream?topic=/io/internal_camera/right_hand_camera/image_rect_color&type=mjpeg&quality=30`;
+    
+    document.getElementById('video-head').src = headUrl;
+    document.getElementById('video-hand').src = handUrl;
 
     // 2. 3D Visualization
     const viewer = new ROS3D.Viewer({
@@ -39,16 +57,20 @@ window.onload = function () {
         fixedFrame: 'base'
     });
 
-    // Try to load URDF if available
-    new ROS3D.UrdfClient({
-        ros: ros,
-        tfClient: tfClient,
-        path: `http://${hostname}:8000/`, // URDF files served by our web_host
-        rootObject: viewer.scene,
-        loader: ROS3D.COLLADA_LOADER
-    });
+    try {
+        new ROS3D.UrdfClient({
+            ros: ros,
+            tfClient: tfClient,
+            path: `http://${hostname}:8000/`,
+            rootObject: viewer.scene,
+            loader: ROS3D.COLLADA_LOADER
+        });
+        log('3D 模型加载中...');
+    } catch(e) {
+        log('3D 模型加载失败');
+    }
 
-    // 3. Mode Toggles (Grasp / Follow)
+    // 3. Mode Toggles (GLOBAL NAMES)
     const graspSrv = new ROSLIB.Service({
         ros: ros,
         name: '/sawyer_skill_server/set_grasp_mode',
@@ -64,12 +86,14 @@ window.onload = function () {
     document.getElementById('btn-grasp').onclick = function() {
         graspActive = !graspActive;
         const btn = this;
+        log(`发送抓取请求: ${graspActive}`);
         graspSrv.callService(new ROSLIB.ServiceRequest({ data: graspActive }), (result) => {
+            log(`抓取响应: ${result.message}`);
             if (result.success) {
                 btn.innerText = graspActive ? '关闭 视觉抓取' : '开启 视觉抓取';
                 btn.classList.toggle('active', graspActive);
             } else {
-                graspActive = !graspActive; // revert
+                graspActive = !graspActive;
                 alert(result.message);
             }
         });
@@ -79,18 +103,20 @@ window.onload = function () {
     document.getElementById('btn-follow').onclick = function() {
         followActive = !followActive;
         const btn = this;
+        log(`发送跟随请求: ${followActive}`);
         followSrv.callService(new ROSLIB.ServiceRequest({ data: followActive }), (result) => {
+            log(`跟随响应: ${result.message}`);
             if (result.success) {
                 btn.innerText = followActive ? '关闭 手臂跟随' : '开启 手臂跟随';
                 btn.classList.toggle('active', followActive);
             } else {
-                followActive = !followActive; // revert
+                followActive = !followActive;
                 alert(result.message);
             }
         });
     };
 
-    // 4. Joint Sliders (Manual Control)
+    // 4. Joint Sliders (GLOBAL NAMES)
     const jointTopic = new ROSLIB.Topic({
         ros: ros,
         name: '/sawyer_skill_server/cmd_joints',
@@ -106,15 +132,13 @@ window.onload = function () {
             name: jointNames,
             position: jointValues
         });
+        log('发布关节指令...');
         jointTopic.publish(msg);
     }
 
-    // Connect sliders to joint values
     jointNames.forEach((name, index) => {
-        const sliderId = `slip-j${index}`;
-        const valId = `val-j${index}`;
-        const slider = document.getElementById(sliderId);
-        const valLabel = document.getElementById(valId);
+        const slider = document.getElementById(`slip-j${index}`);
+        const valLabel = document.getElementById(`val-j${index}`);
 
         slider.oninput = function() {
             const val = parseFloat(this.value);
@@ -124,11 +148,10 @@ window.onload = function () {
         };
     });
 
-    // Throttling for performance
     let lastUpdate = 0;
     function throttleUpdateJoints() {
         const now = Date.now();
-        if (now - lastUpdate > 50) { // Limit to 20Hz
+        if (now - lastUpdate > 100) { 
             updateJoints();
             lastUpdate = now;
         }
@@ -141,15 +164,13 @@ window.onload = function () {
         messageType: 'sensor_msgs/JointState'
     });
 
-    const headSlider = document.getElementById('slip-head');
-    headSlider.oninput = function() {
+    document.getElementById('slip-head').oninput = function() {
         const val = parseFloat(this.value);
         document.getElementById('val-head').innerText = val.toFixed(2);
-        const msg = new ROSLIB.Message({
+        headTopic.publish(new ROSLIB.Message({
             name: ['head_pan'],
             position: [val]
-        });
-        headTopic.publish(msg);
+        }));
     };
 
     // 6. Gripper Control
@@ -160,14 +181,13 @@ window.onload = function () {
     });
 
     let gripperOpen = true;
-    const gripperBtn = document.getElementById('btn-gripper');
-    gripperBtn.onclick = function() {
+    document.getElementById('btn-gripper').onclick = function() {
         gripperOpen = !gripperOpen;
-        gripperBtn.innerText = gripperOpen ? '关闭 夹爪' : '打开 夹爪';
+        log(`发送夹爪指令: ${gripperOpen ? '打开' : '关闭'}`);
+        this.innerText = gripperOpen ? '关闭 夹爪' : '打开 夹爪';
         gripperTopic.publish(new ROSLIB.Message({ data: gripperOpen }));
     };
 
-    // Handle window resize
     window.addEventListener('resize', () => {
         const viz = document.getElementById('viz-container');
         viewer.resize(viz.offsetWidth, viz.offsetHeight);
