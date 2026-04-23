@@ -1,195 +1,102 @@
 window.onload = function () {
-    const hostname = window.location.hostname;
-    const ros = new ROSLIB.Ros({ url: `ws://${hostname}:9090` });
+    console.log("Sawyer Control System (UCAR-Matched Style) initializing...");
 
-    const statusBadge = document.getElementById('connection-status');
-    const debugLog = document.getElementById('debug-log');
-
-    function log(msg) {
-        const div = document.createElement('div');
-        div.innerText = `[${new Date().toLocaleTimeString()}] ${msg}`;
-        debugLog.appendChild(div);
-        debugLog.scrollTop = debugLog.scrollHeight;
-        console.log(msg);
+    function safeUI(id, action) {
+        var el = document.getElementById(id);
+        if (el) action(el);
     }
 
-    ros.on('connection', () => {
-        statusBadge.innerText = 'ROS 在线';
-        statusBadge.className = 'status-badge online';
-        log('成功连接到 ROSBridge');
-    });
-
-    ros.on('error', (error) => {
-        statusBadge.innerText = '连接错误';
-        statusBadge.className = 'status-badge';
-        log('ROS 连接错误: ' + JSON.stringify(error));
-    });
-
-    ros.on('close', () => {
-        statusBadge.innerText = 'ROS 离线';
-        statusBadge.className = 'status-badge';
-        log('ROS 连接已关闭');
-    });
-
-    // 1. Video Feeds
-    log('正在请求视频流...');
-    const headUrl = `http://${hostname}:8080/stream?topic=/io/internal_camera/head_camera/image_rect_color&type=mjpeg&quality=30`;
-    const handUrl = `http://${hostname}:8080/stream?topic=/io/internal_camera/right_hand_camera/image_rect_color&type=mjpeg&quality=30`;
+    // 1. ROS Connection (UCAR Style)
+    var hostname = window.location.hostname;
+    var ros = new ROSLIB.Ros({ url: 'ws://' + hostname + ':9090' });
     
-    document.getElementById('video-head').src = headUrl;
-    document.getElementById('video-hand').src = handUrl;
-
-    // 2. 3D Visualization
-    const viewer = new ROS3D.Viewer({
-        divID: 'viz-container',
-        width: document.getElementById('viz-container').offsetWidth,
-        height: document.getElementById('viz-container').offsetHeight,
-        antialias: true,
-        background: '#000000',
-        cameraPose: { x: 3, y: 3, z: 3 }
+    ros.on('connection', function() {
+        safeUI('connection-status', function(el) { el.innerText = '在线'; el.className = 'status-badge online'; });
+        console.log("Connected to ROSBridge.");
+    });
+    ros.on('error', function() {
+        safeUI('connection-status', function(el) { el.innerText = '连接错误'; el.className = 'status-badge'; });
+    });
+    ros.on('close', function() {
+        safeUI('connection-status', function(el) { el.innerText = '离线'; el.className = 'status-badge'; });
     });
 
-    const tfClient = new ROSLIB.TFClient({
-        ros: ros,
-        angularThres: 0.01,
-        transThres: 0.01,
-        rate: 10.0,
-        fixedFrame: 'base'
-    });
+    // 2. Video Feeds (UCAR Style - Simplified)
+    safeUI('video-head', function(el) { el.src = 'http://' + hostname + ':8080/stream?topic=/io/internal_camera/head_camera/image_rect_color'; });
+    safeUI('video-hand', function(el) { el.src = 'http://' + hostname + ':8080/stream?topic=/io/internal_camera/right_hand_camera/image_rect_color'; });
 
-    try {
-        new ROS3D.UrdfClient({
-            ros: ros,
-            tfClient: tfClient,
-            path: `http://${hostname}:8000/`,
-            rootObject: viewer.scene,
-            loader: ROS3D.COLLADA_LOADER
-        });
-        log('3D 模型加载中...');
-    } catch(e) {
-        log('3D 模型加载失败');
-    }
+    // 3. Topics & Services
+    var jointTopic = new ROSLIB.Topic({ ros: ros, name: '/sawyer_joints', messageType: 'sensor_msgs/JointState' });
+    var headTopic = new ROSLIB.Topic({ ros: ros, name: '/sawyer_head', messageType: 'sensor_msgs/JointState' });
+    var gripperTopic = new ROSLIB.Topic({ ros: ros, name: '/sawyer_gripper', messageType: 'std_msgs/Bool' });
 
-    // 3. Mode Toggles (GLOBAL NAMES)
-    const graspSrv = new ROSLIB.Service({
-        ros: ros,
-        name: '/sawyer_skill_server/set_grasp_mode',
-        serviceType: 'std_srvs/SetBool'
-    });
-    const followSrv = new ROSLIB.Service({
-        ros: ros,
-        name: '/sawyer_skill_server/set_follow_mode',
-        serviceType: 'std_srvs/SetBool'
-    });
+    var graspSrv = new ROSLIB.Service({ ros: ros, name: '/sawyer_grasp', serviceType: 'std_srvs/SetBool' });
+    var followSrv = new ROSLIB.Service({ ros: ros, name: '/sawyer_follow', serviceType: 'std_srvs/SetBool' });
 
-    let graspActive = false;
-    document.getElementById('btn-grasp').onclick = function() {
-        graspActive = !graspActive;
-        const btn = this;
-        log(`发送抓取请求: ${graspActive}`);
-        graspSrv.callService(new ROSLIB.ServiceRequest({ data: graspActive }), (result) => {
-            log(`抓取响应: ${result.message}`);
-            if (result.success) {
-                btn.innerText = graspActive ? '关闭 视觉抓取' : '开启 视觉抓取';
-                btn.classList.toggle('active', graspActive);
-            } else {
-                graspActive = !graspActive;
-                alert(result.message);
-            }
-        });
-    };
+    // 4. Joint Control Logic
+    var jointNames = ["right_j0", "right_j1", "right_j2", "right_j3", "right_j4", "right_j5", "right_j6"];
+    var jointValues = [0, -0.5, 0, 1.5, 0, 1.5, 0];
 
-    let followActive = false;
-    document.getElementById('btn-follow').onclick = function() {
-        followActive = !followActive;
-        const btn = this;
-        log(`发送跟随请求: ${followActive}`);
-        followSrv.callService(new ROSLIB.ServiceRequest({ data: followActive }), (result) => {
-            log(`跟随响应: ${result.message}`);
-            if (result.success) {
-                btn.innerText = followActive ? '关闭 手臂跟随' : '开启 手臂跟随';
-                btn.classList.toggle('active', followActive);
-            } else {
-                followActive = !followActive;
-                alert(result.message);
-            }
-        });
-    };
-
-    // 4. Joint Sliders (GLOBAL NAMES)
-    const jointTopic = new ROSLIB.Topic({
-        ros: ros,
-        name: '/sawyer_skill_server/cmd_joints',
-        messageType: 'sensor_msgs/JointState'
-    });
-
-    const jointNames = ["right_j0", "right_j1", "right_j2", "right_j3", "right_j4", "right_j5", "right_j6"];
-    const jointValues = [0, -0.5, 0, 1.5, 0, 1.5, 0];
-    
-    function updateJoints() {
-        const msg = new ROSLIB.Message({
-            header: { stamp: { secs: 0, nsecs: 0 }, frame_id: '' },
-            name: jointNames,
-            position: jointValues
-        });
-        log('发布关节指令...');
+    function sendJoints() {
+        var msg = new ROSLIB.Message({ name: jointNames, position: jointValues });
         jointTopic.publish(msg);
     }
 
-    jointNames.forEach((name, index) => {
-        const slider = document.getElementById(`slip-j${index}`);
-        const valLabel = document.getElementById(`val-j${index}`);
+    jointNames.forEach(function(name, index) {
+        var sliderId = 'slip-j' + index;
+        safeUI(sliderId, function(slider) {
+            slider.oninput = function() {
+                var v = parseFloat(this.value);
+                safeUI('val-j' + index, function(label) { label.innerText = v.toFixed(2); });
+                jointValues[index] = v;
+                sendJoints();
+            };
+        });
+    });
 
+    // 5. Head Control Logic
+    safeUI('slip-head', function(slider) {
         slider.oninput = function() {
-            const val = parseFloat(this.value);
-            valLabel.innerText = val.toFixed(2);
-            jointValues[index] = val;
-            throttleUpdateJoints();
+            var v = parseFloat(this.value);
+            safeUI('val-head', function(label) { label.innerText = v.toFixed(2); });
+            headTopic.publish(new ROSLIB.Message({ name: ['head_pan'], position: [v] }));
         };
     });
 
-    let lastUpdate = 0;
-    function throttleUpdateJoints() {
-        const now = Date.now();
-        if (now - lastUpdate > 100) { 
-            updateJoints();
-            lastUpdate = now;
-        }
-    }
-
-    // 5. Head Control
-    const headTopic = new ROSLIB.Topic({
-        ros: ros,
-        name: '/sawyer_skill_server/cmd_head',
-        messageType: 'sensor_msgs/JointState'
+    // 6. Gripper Control Logic
+    var gripperOpen = true;
+    safeUI('btn-gripper', function(btn) {
+        btn.onclick = function() {
+            gripperOpen = !gripperOpen;
+            btn.innerText = gripperOpen ? '关闭 夹爪' : '打开 夹爪';
+            gripperTopic.publish(new ROSLIB.Message({ data: gripperOpen }));
+        };
     });
 
-    document.getElementById('slip-head').oninput = function() {
-        const val = parseFloat(this.value);
-        document.getElementById('val-head').innerText = val.toFixed(2);
-        headTopic.publish(new ROSLIB.Message({
-            name: ['head_pan'],
-            position: [val]
-        }));
-    };
-
-    // 6. Gripper Control
-    const gripperTopic = new ROSLIB.Topic({
-        ros: ros,
-        name: '/sawyer_skill_server/cmd_gripper',
-        messageType: 'std_msgs/Bool'
+    // 7. Mode Toggles Logic
+    var graspActive = false;
+    safeUI('btn-grasp', function(btn) {
+        btn.onclick = function() {
+            graspActive = !graspActive;
+            graspSrv.callService(new ROSLIB.ServiceRequest({ data: graspActive }), function(res) {
+                if(res.success) {
+                    btn.innerText = graspActive ? '关闭 视觉抓取' : '开启 视觉抓取';
+                    btn.style.backgroundColor = graspActive ? '#22c55e' : '';
+                }
+            });
+        };
     });
 
-    let gripperOpen = true;
-    document.getElementById('btn-gripper').onclick = function() {
-        gripperOpen = !gripperOpen;
-        log(`发送夹爪指令: ${gripperOpen ? '打开' : '关闭'}`);
-        this.innerText = gripperOpen ? '关闭 夹爪' : '打开 夹爪';
-        gripperTopic.publish(new ROSLIB.Message({ data: gripperOpen }));
-    };
-
-    window.addEventListener('resize', () => {
-        const viz = document.getElementById('viz-container');
-        viewer.resize(viz.offsetWidth, viz.offsetHeight);
+    var followActive = false;
+    safeUI('btn-follow', function(btn) {
+        btn.onclick = function() {
+            followActive = !followActive;
+            followSrv.callService(new ROSLIB.ServiceRequest({ data: followActive }), function(res) {
+                if(res.success) {
+                    btn.innerText = followActive ? '关闭 手臂跟随' : '开启 手臂跟随';
+                    btn.style.backgroundColor = followActive ? '#22c55e' : '';
+                }
+            });
+        };
     });
 };

@@ -52,18 +52,16 @@ class SawyerSkillServer:
         except Exception as e:
             rospy.logwarn("Could not connect to Sawyer Head: %s", e)
         
-        # Services for Toggles (Global names)
-        rospy.Service("/sawyer_skill_server/set_grasp_mode", SetBool, self.handle_grasp_toggle)
-        rospy.Service("/sawyer_skill_server/set_follow_mode", SetBool, self.handle_follow_toggle)
+        # Services for Toggles (ROOT NAMES)
+        rospy.Service("/sawyer_grasp", SetBool, self.handle_grasp_toggle)
+        rospy.Service("/sawyer_follow", SetBool, self.handle_follow_toggle)
+        rospy.Service("/sawyer_trigger", Trigger, self.handle_trigger_grasp)
         
-        # Skills for OpenClaw
-        rospy.Service("/sawyer_skill_server/trigger_grasp", Trigger, self.handle_trigger_grasp)
-        
-        # Topic for manual control (Global names)
+        # Topics (ROOT NAMES)
         self.joint_cmd_pub = rospy.Publisher("/robot/limb/right/joint_command", JointCommand, queue_size=1)
-        self.joint_sub = rospy.Subscriber("/sawyer_skill_server/cmd_joints", JointState, self.handle_joint_command)
-        self.head_sub = rospy.Subscriber("/sawyer_skill_server/cmd_head", JointState, self.handle_head_command)
-        self.gripper_sub = rospy.Subscriber("/sawyer_skill_server/cmd_gripper", Bool, self.handle_gripper_command)
+        self.joint_sub = rospy.Subscriber("/sawyer_joints", JointState, self.handle_joint_command)
+        self.head_sub = rospy.Subscriber("/sawyer_head", JointState, self.handle_head_command)
+        self.gripper_sub = rospy.Subscriber("/sawyer_gripper", Bool, self.handle_gripper_command)
 
         rospy.loginfo("Sawyer Skill Server initialized.")
 
@@ -110,36 +108,32 @@ class SawyerSkillServer:
         return TriggerResponse(success=True, message="Grasp action triggered.")
 
     def handle_joint_command(self, msg):
-        """Handle manual slider input from Web."""
+        """Handle manual slider input from Web (Direct Control)."""
         if self.limb is None:
-            rospy.logwarn_throttle(5, "Limb interface not available. Skipping joint command.")
             return
         
-        rospy.logdebug("Web Joint Commmand: %s", msg.position)
-        cmd = JointCommand()
-        cmd.names = msg.name
-        cmd.position = msg.position
-        cmd.mode = JointCommand.POSITION_MODE
-        self.joint_cmd_pub.publish(cmd)
+        # Construct the dictionary for direct control
+        joint_dict = {}
+        for i, name in enumerate(msg.name):
+            if i < len(msg.position):
+                joint_dict[name] = msg.position[i]
+        
+        if joint_dict:
+            rospy.logdebug("Direct Setting Joints: %s", joint_dict)
+            self.limb.set_joint_positions(joint_dict)
 
     def handle_head_command(self, msg):
-        """Handle head pan slider input."""
+        """Handle head pan slider input (Direct Control)."""
         if self.head is not None and len(msg.position) > 0:
-            rospy.logdebug("Web Head Pan: %f", msg.position[0])
             self.head.set_pan(msg.position[0])
-        else:
-            rospy.logwarn_throttle(5, "Head interface not available.")
 
     def handle_gripper_command(self, msg):
-        """Handle gripper open/close."""
+        """Handle gripper open/close (Direct Control)."""
         if self.gripper is not None:
-            rospy.loginfo("Web Gripper Command: %s", msg.data)
             if msg.data:
                 self.gripper.open()
             else:
                 self.gripper.close()
-        else:
-            rospy.logwarn_throttle(5, "Gripper interface not available.")
 
 if __name__ == '__main__':
     try:
