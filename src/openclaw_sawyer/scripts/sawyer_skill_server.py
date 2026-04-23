@@ -7,6 +7,7 @@ import os
 import json
 import threading
 from std_srvs.srv import SetBool, SetBoolResponse, Trigger, TriggerResponse
+from std_msgs.msg import Bool
 from sensor_msgs.msg import JointState, Image
 from intera_core_msgs.msg import JointCommand
 import intera_interface
@@ -33,9 +34,7 @@ class SawyerSkillServer:
             rospy.logwarn("Could not connect to Sawyer Limb: %s. Manual control will be disabled.", e)
 
         try:
-            self.gripper = intera_interface.Gripper("right_gripper")
-            if not self.gripper.ready():
-                self.gripper.init_test()
+            self.gripper = intera_interface.Gripper("right")
             rospy.loginfo("Successfully connected to Sawyer Gripper.")
         except Exception as e:
             rospy.logwarn("Could not connect to Sawyer Gripper: %s", e)
@@ -61,7 +60,7 @@ class SawyerSkillServer:
         self.head_sub = rospy.Subscriber("~cmd_head", JointState, self.handle_head_command)
         
         # Subscriber for gripper
-        self.gripper_sub = rospy.Subscriber("~cmd_gripper", SetBool, self.handle_gripper_command)
+        self.gripper_sub = rospy.Subscriber("~cmd_gripper", Bool, self.handle_gripper_command)
 
         rospy.loginfo("Sawyer Skill Server initialized.")
 
