@@ -21,10 +21,30 @@ class SawyerSkillServer:
             "follow": None
         }
         
-        # Sawyer interfaces
-        self.limb = intera_interface.Limb("right")
-        self.gripper = intera_interface.Gripper("right_gripper")
-        self.head = intera_interface.Head()
+        # Sawyer interfaces (with robust error handling)
+        self.limb = None
+        self.gripper = None
+        self.head = None
+        
+        try:
+            self.limb = intera_interface.Limb("right")
+            rospy.loginfo("Successfully connected to Sawyer Limb.")
+        except Exception as e:
+            rospy.logwarn("Could not connect to Sawyer Limb: %s. Manual control will be disabled.", e)
+
+        try:
+            self.gripper = intera_interface.Gripper("right_gripper")
+            if not self.gripper.ready():
+                self.gripper.init_test()
+            rospy.loginfo("Successfully connected to Sawyer Gripper.")
+        except Exception as e:
+            rospy.logwarn("Could not connect to Sawyer Gripper: %s", e)
+
+        try:
+            self.head = intera_interface.Head()
+            rospy.loginfo("Successfully connected to Sawyer Head.")
+        except Exception as e:
+            rospy.logwarn("Could not connect to Sawyer Head: %s", e)
         
         # Services for Toggles
         rospy.Service("~set_grasp_mode", SetBool, self.handle_grasp_toggle)
@@ -87,6 +107,9 @@ class SawyerSkillServer:
 
     def handle_joint_command(self, msg):
         """Handle manual slider input from Web."""
+        if self.limb is None:
+            rospy.logwarn_throttle(5, "Limb interface not available. Skipping joint command.")
+            return
         cmd = JointCommand()
         cmd.names = msg.name
         cmd.position = msg.position
@@ -95,15 +118,20 @@ class SawyerSkillServer:
 
     def handle_head_command(self, msg):
         """Handle head pan slider input."""
-        if len(msg.position) > 0:
+        if self.head is not None and len(msg.position) > 0:
             self.head.set_pan(msg.position[0])
+        else:
+            rospy.logwarn_throttle(5, "Head interface not available.")
 
     def handle_gripper_command(self, msg):
         """Handle gripper open/close."""
-        if msg.data:
-            self.gripper.open()
+        if self.gripper is not None:
+            if msg.data:
+                self.gripper.open()
+            else:
+                self.gripper.close()
         else:
-            self.gripper.close()
+            rospy.logwarn_throttle(5, "Gripper interface not available.")
 
 if __name__ == '__main__':
     try:
