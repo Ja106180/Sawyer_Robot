@@ -21,6 +21,13 @@ class SawyerSkillServer:
             "grasp": None,
             "follow": None
         }
+
+        # Movement smoothing parameters
+        self.smoothing_factor = 0.65  # Smoothing factor (0.0 ~ 1.0). Smaller = slower/smoother
+        self.target_joints = {}       # Target joint positions for arm
+        self.current_joints = {}      # Current interpolated positions for arm
+        self.target_head_pan = 0.0    # Target pan angle for head
+        self.current_head_pan = 0.0   # Current interpolated pan angle for head
         
         # Paths to scripts (avoiding rosrun wrapper)
         rospack = rospkg.RosPack()
@@ -52,6 +59,14 @@ class SawyerSkillServer:
         except Exception as e:
             rospy.logwarn("Could not connect to Sawyer Head: %s", e)
         
+        # Initialize current positions to avoid jumps on first command
+        if self.limb:
+            names = self.limb.joint_names()
+            self.current_joints = {name: self.limb.joint_angle(name) for name in names}
+            self.target_joints = self.current_joints.copy()
+        if self.head:
+            self.current_head_pan = 0.0
+        
         # Camera control (Attempt to open both)
         try:
             self.cameras = intera_interface.Cameras()
@@ -78,6 +93,9 @@ class SawyerSkillServer:
         # Timer to sync state back to web (10Hz)
         rospy.Timer(rospy.Duration(0.1), self.sync_state)
 
+        # Control loop timer for smooth motion (20Hz)
+        rospy.Timer(rospy.Duration(0.05), self.control_loop)
+
         rospy.loginfo("Sawyer Skill Server initialized.")
 
     def sync_state(self, event):
@@ -92,6 +110,32 @@ class SawyerSkillServer:
         state.name = names
         state.position = angles
         self.joint_state_pub.publish(state)
+
+    def control_loop(self, event):
+        """ High-frequency control loop: performs interpolation for arm and head. """
+        # 1. Smooth movements for arm joints
+        if self.limb and self.target_joints:
+            updated_joints = {}
+            for name, target_val in self.target_joints.items():
+                curr_val = self.current_joints.get(name, target_val)
+                # Interpolation: next = curr + factor * (target - curr)
+                next_val = curr_val + self.smoothing_factor * (target_val - curr_val)
+                updated_joints[name] = next_val
+                self.current_joints[name] = next_val
+            
+            try:
+                self.limb.set_joint_positions(updated_joints)
+            except Exception as e:
+                rospy.logdebug("Limb control loop error: %s", e)
+
+        # 2. Smooth movements for head pan
+        if self.head:
+            next_pan = self.current_head_pan + self.smoothing_factor * (self.target_head_pan - self.current_head_pan)
+            self.current_head_pan = next_pan
+            try:
+                self.head.set_pan(next_pan)
+            except Exception as e:
+                rospy.logdebug("Head control loop error: %s", e)
 
     def handle_grasp_toggle(self, req):
         """Toggle autonomous grasping script."""
@@ -136,24 +180,21 @@ class SawyerSkillServer:
         return TriggerResponse(success=True, message="Grasp action triggered.")
 
     def handle_joint_command(self, msg):
-        """Handle manual slider input from Web (Direct Control)."""
+        """Handle manual slider input from Web (Update target values only)."""
         if self.limb is None:
             return
-        
-        # Construct the dictionary for direct control
-        joint_dict = {}
+            
         for i, name in enumerate(msg.name):
             if i < len(msg.position):
-                joint_dict[name] = msg.position[i]
+                self.target_joints[name] = msg.position[i]
         
-        if joint_dict:
-            rospy.logdebug("Direct Setting Joints: %s", joint_dict)
-            self.limb.set_joint_positions(joint_dict)
+        rospy.logdebug("Updated Target Joints from Web")
 
     def handle_head_command(self, msg):
-        """Handle head pan slider input (Direct Control)."""
+        """Handle head pan slider input (Update target value only)."""
         if self.head is not None and len(msg.position) > 0:
-            self.head.set_pan(msg.position[0])
+            self.target_head_pan = msg.position[0]
+            rospy.logdebug("Updated Target Head Pan from Web")
 
     def handle_gripper_command(self, msg):
         """Handle gripper open/close (Direct Control)."""
