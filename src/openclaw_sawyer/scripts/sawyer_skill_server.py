@@ -85,6 +85,7 @@ class SawyerSkillServer:
         rospy.Service("/sawyer_grasp", SetBool, self.handle_grasp_toggle)
         rospy.Service("/sawyer_follow", SetBool, self.handle_follow_toggle)
         rospy.Service("/sawyer_trigger", Trigger, self.handle_trigger_grasp)
+        rospy.Service("/sawyer_stop", Trigger, self.handle_stop)
         
         # Topics
         self.joint_state_pub = rospy.Publisher("/sawyer_state", JointState, queue_size=1)
@@ -182,6 +183,37 @@ class SawyerSkillServer:
 
     def handle_trigger_grasp(self, req):
         return TriggerResponse(success=True, message="Triggered.")
+
+    def handle_stop(self, req):
+        """Emergency Stop: Kill all sub-processes and freeze arm."""
+        rospy.logwarn("EMERGENCY STOP TRIGGERED!")
+        
+        # 1. Kill all background processes
+        for name in self.processes:
+            if self.processes[name] is not None:
+                try:
+                    os.killpg(os.getpgid(self.processes[name].pid), signal.SIGTERM)
+                    rospy.loginfo(f"Killed process: {name}")
+                except Exception as e:
+                    rospy.logerr(f"Error killing {name}: {e}")
+                self.processes[name] = None
+        
+        # 2. Clear targets to stop interpolation
+        self.target_joints = {}
+        self.target_head_pan = self.current_head_pan
+        
+        # 3. Explicitly send current position to "freeze" the robot
+        if self.limb:
+            try:
+                curr = self.limb.joint_angles()
+                self.limb.set_joint_positions(curr)
+                # Update our interpolation state too
+                for name, angle in curr.items():
+                    self.current_joints[name] = angle
+            except:
+                pass
+                
+        return TriggerResponse(success=True, message="EMERGENCY STOP EXECUTED. Processes killed, arm frozen.")
 
 if __name__ == '__main__':
     try:
