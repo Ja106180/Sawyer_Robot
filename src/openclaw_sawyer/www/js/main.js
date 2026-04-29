@@ -6,6 +6,12 @@ window.onload = function () {
         if (el) action(el);
     }
 
+    // 4.1 Speed Control Initialization
+    safeUI('slip-speed', function(slider) {
+        slider.value = 0.3;
+        safeUI('val-speed', function(label) { label.innerText = "0.30"; });
+    });
+
     // 1. ROS Connection
     var hostname = window.location.hostname;
     var ros = new ROSLIB.Ros({ url: 'ws://' + hostname + ':9090' });
@@ -32,6 +38,7 @@ window.onload = function () {
     var stateSub = new ROSLIB.Topic({ ros: ros, name: '/sawyer_state', messageType: 'sensor_msgs/JointState' });
     var headTopic = new ROSLIB.Topic({ ros: ros, name: '/sawyer_head', messageType: 'sensor_msgs/JointState' });
     var gripperTopic = new ROSLIB.Topic({ ros: ros, name: '/sawyer_gripper', messageType: 'std_msgs/Bool' });
+    var speedTopic = new ROSLIB.Topic({ ros: ros, name: '/sawyer_speed', messageType: 'std_msgs/Float32' });
 
     var graspSrv = new ROSLIB.Service({ ros: ros, name: '/sawyer_grasp', serviceType: 'std_srvs/SetBool' });
     var followSrv = new ROSLIB.Service({ ros: ros, name: '/sawyer_follow', serviceType: 'std_srvs/SetBool' });
@@ -76,6 +83,16 @@ window.onload = function () {
             slider.onmouseup = function() { isDragging[index] = false; };
             slider.ontouchend = function() { isDragging[index] = false; };
         });
+    });
+    
+    // 4.1 Speed Control Logic
+    safeUI('slip-speed', function(slider) {
+        slider.oninput = function() {
+            var v = parseFloat(this.value);
+            safeUI('val-speed', function(label) { label.innerText = v.toFixed(2); });
+            console.log("Publishing speed: " + v);
+            speedTopic.publish(new ROSLIB.Message({ data: v }));
+        };
     });
 
     // 5. Head Control
