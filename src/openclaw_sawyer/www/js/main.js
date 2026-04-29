@@ -56,6 +56,7 @@ window.onload = function () {
 
     var graspSrv = new ROSLIB.Service({ ros: ros, name: '/sawyer_grasp', serviceType: 'std_srvs/SetBool' });
     var followSrv = new ROSLIB.Service({ ros: ros, name: '/sawyer_follow', serviceType: 'std_srvs/SetBool' });
+    var pointSrv = new ROSLIB.Service({ ros: ros, name: '/sawyer_point', serviceType: 'std_srvs/SetBool' });
     var stopSrv = new ROSLIB.Service({ ros: ros, name: '/sawyer_stop', serviceType: 'std_srvs/Trigger' });
 
     // 3.1 Emergency Stop
@@ -258,4 +259,5 @@ window.onload = function () {
 
     bindMode('btn-grasp', graspSrv, "Visual Grasping");
     bindMode('btn-follow', followSrv, "Arm Following");
+    bindMode('btn-point', pointSrv, "Point to Grasp");
 };

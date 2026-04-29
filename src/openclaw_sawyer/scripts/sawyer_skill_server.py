@@ -19,19 +19,21 @@ class SawyerSkillServer:
         # State management
         self.processes = {
             "grasp": None,
-            "follow": None
+            "follow": None,
+            "point": None
         }
         
         # Paths to scripts
         rospack = rospkg.RosPack()
         self.paths = {
             "grasp": os.path.join(rospack.get_path('visual_grasping'), 'scripts', 'grasp.py'),
-            "follow": os.path.join(rospack.get_path('arm_follow'), 'scripts', 'arm_follow_node.py')
+            "follow": os.path.join(rospack.get_path('arm_follow'), 'scripts', 'arm_follow_node.py'),
+            "point": os.path.join(rospack.get_path('openclaw_sawyer'), 'scripts', 'point_grasp_skill.py')
         }
         
         # Speed scaling and smoothing
         self.speed_scale = 0.3
-        self.smoothing_factor = 0.1  # Initial smoothing
+        self.smoothing_factor = 0.1  
         
         # Sawyer interfaces
         self.limb = None
@@ -59,19 +61,10 @@ class SawyerSkillServer:
         # Camera control
         try:
             self.cameras = intera_interface.Cameras()
-            # Try to open both cameras
             if self.cameras.verify_camera_exists("head_camera"):
                 self.cameras.start_streaming("head_camera")
-                self.cameras.set_exposure("head_camera", -1) 
-                self.cameras.set_gain("head_camera", -1)
-                rospy.loginfo("Head camera initialized.")
-            
             if self.cameras.verify_camera_exists("right_hand_camera"):
-                # Note: Bandwidth might be an issue, but let's try
                 self.cameras.start_streaming("right_hand_camera")
-                self.cameras.set_exposure("right_hand_camera", -1)
-                self.cameras.set_gain("right_hand_camera", -1)
-                rospy.loginfo("Wrist camera initialized.")
         except Exception as e:
             rospy.logwarn("Camera initialization error: %s", e)
 
@@ -84,6 +77,7 @@ class SawyerSkillServer:
         # Services
         rospy.Service("/sawyer_grasp", SetBool, self.handle_grasp_toggle)
         rospy.Service("/sawyer_follow", SetBool, self.handle_follow_toggle)
+        rospy.Service("/sawyer_point", SetBool, self.handle_point_toggle)
         rospy.Service("/sawyer_trigger", Trigger, self.handle_trigger_grasp)
         rospy.Service("/sawyer_stop", Trigger, self.handle_stop)
         
@@ -96,14 +90,12 @@ class SawyerSkillServer:
 
         # Timers
         rospy.Timer(rospy.Duration(0.1), self.sync_state)
-        rospy.Timer(ros.Duration(0.02), self.control_loop) # 50Hz control loop
+        rospy.Timer(rospy.Duration(0.02), self.control_loop) 
 
-        rospy.loginfo("Sawyer Skill Server with speed control ready.")
+        rospy.loginfo("Sawyer Skill Server with Point-to-Grasp ready.")
 
     def sync_state(self, event):
-        """Publish current robot state for Web UI syncing."""
-        if self.limb is None:
-            return
+        if self.limb is None: return
         state = JointState()
         state.header.stamp = rospy.Time.now()
         names = self.limb.joint_names()
@@ -111,22 +103,15 @@ class SawyerSkillServer:
         state.name = names
         state.position = angles
         self.joint_state_pub.publish(state)
-        
-        # Sync current state into interpolation if not already moving
         if not self.target_joints:
             for name, angle in zip(names, angles):
                 self.current_joints[name] = angle
 
     def handle_speed_command(self, msg):
         self.speed_scale = max(0.01, min(1.0, msg.data))
-        # Map speed_scale (0.05-1.0) to smoothing_factor (0.02-0.4)
-        # Low speed = smaller smoothing factor = slower transition
         self.smoothing_factor = self.speed_scale * 0.3
-        rospy.loginfo("Speed updated: %.2f (Smoothing: %.3f)", self.speed_scale, self.smoothing_factor)
 
     def control_loop(self, event):
-        """Interpolation control loop."""
-        # Arm control
         if self.limb and self.target_joints:
             cmd_dict = {}
             for name, target_pos in self.target_joints.items():
@@ -134,11 +119,9 @@ class SawyerSkillServer:
                 next_pos = curr_pos + self.smoothing_factor * (target_pos - curr_pos)
                 cmd_dict[name] = next_pos
                 self.current_joints[name] = next_pos
-            
             if cmd_dict:
                 self.limb.set_joint_positions(cmd_dict)
 
-        # Head control
         if self.head:
             next_pan = self.current_head_pan + self.smoothing_factor * (self.target_head_pan - self.current_head_pan)
             self.current_head_pan = next_pan
@@ -160,60 +143,46 @@ class SawyerSkillServer:
             else: self.gripper.close()
 
     def handle_grasp_toggle(self, req):
-        if req.data:
-            if self.processes["grasp"] is None or self.processes["grasp"].poll() is not None:
-                self.processes["grasp"] = subprocess.Popen(["python3", self.paths["grasp"]], preexec_fn=os.setsid)
-                return SetBoolResponse(success=True, message="Grasp started.")
-        else:
-            if self.processes["grasp"] is not None:
-                os.killpg(os.getpgid(self.processes["grasp"].pid), signal.SIGTERM)
-                self.processes["grasp"] = None
-        return SetBoolResponse(success=True)
+        return self._toggle_process("grasp", req.data)
 
     def handle_follow_toggle(self, req):
-        if req.data:
-            if self.processes["follow"] is None or self.processes["follow"].poll() is not None:
-                self.processes["follow"] = subprocess.Popen(["python3", self.paths["follow"]], preexec_fn=os.setsid)
-                return SetBoolResponse(success=True, message="Follow started.")
+        return self._toggle_process("follow", req.data)
+
+    def handle_point_toggle(self, req):
+        return self._toggle_process("point", req.data)
+
+    def _toggle_process(self, name, active):
+        if active:
+            if self.processes[name] is None or self.processes[name].poll() is not None:
+                self.processes[name] = subprocess.Popen(["python3", self.paths[name]], preexec_fn=os.setsid)
+                return SetBoolResponse(success=True, message=f"{name} started.")
         else:
-            if self.processes["follow"] is not None:
-                os.killpg(os.getpgid(self.processes["follow"].pid), signal.SIGTERM)
-                self.processes["follow"] = None
+            if self.processes[name] is not None:
+                try:
+                    os.killpg(os.getpgid(self.processes[name].pid), signal.SIGTERM)
+                except:
+                    pass
+                self.processes[name] = None
+                return SetBoolResponse(success=True, message=f"{name} stopped.")
         return SetBoolResponse(success=True)
 
-    def handle_trigger_grasp(self, req):
-        return TriggerResponse(success=True, message="Triggered.")
-
     def handle_stop(self, req):
-        """Emergency Stop: Kill all sub-processes and freeze arm."""
         rospy.logwarn("EMERGENCY STOP TRIGGERED!")
-        
-        # 1. Kill all background processes
         for name in self.processes:
             if self.processes[name] is not None:
                 try:
                     os.killpg(os.getpgid(self.processes[name].pid), signal.SIGTERM)
-                    rospy.loginfo(f"Killed process: {name}")
-                except Exception as e:
-                    rospy.logerr(f"Error killing {name}: {e}")
+                except: pass
                 self.processes[name] = None
-        
-        # 2. Clear targets to stop interpolation
         self.target_joints = {}
-        self.target_head_pan = self.current_head_pan
-        
-        # 3. Explicitly send current position to "freeze" the robot
         if self.limb:
-            try:
-                curr = self.limb.joint_angles()
-                self.limb.set_joint_positions(curr)
-                # Update our interpolation state too
-                for name, angle in curr.items():
-                    self.current_joints[name] = angle
-            except:
-                pass
-                
-        return TriggerResponse(success=True, message="EMERGENCY STOP EXECUTED. Processes killed, arm frozen.")
+            curr = self.limb.joint_angles()
+            self.limb.set_joint_positions(curr)
+            for name, angle in curr.items(): self.current_joints[name] = angle
+        return TriggerResponse(success=True, message="Stopped.")
+
+    def handle_trigger_grasp(self, req):
+        return TriggerResponse(success=True)
 
 if __name__ == '__main__':
     try:
