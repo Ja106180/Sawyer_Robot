@@ -5,18 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Sawyer Control Cockpit</title>
     <!-- ROS Libraries -->
-    <script src="https://cdn.jsdelivr.net/npm/roslib@1/build/roslib.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/eventemitter2@6/lib/eventemitter2.min.js"></script>
     <link rel="stylesheet" href="css/style.css">
-    <!-- Google Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
 <body>
     <!-- Emergency Stop Button -->
     <button id="btn-estop" class="estop-btn">
-        <i class="fas fa-skull-crossbones"></i>
-        <span>EMERGENCY STOP</span>
+        <span>🛑 EMERGENCY STOP</span>
     </button>
     <!-- Sidebar for Status & Modes -->
     <div class="sidebar">
@@ -36,16 +30,13 @@
             <div class="section-title">核心功能</div>
             <div class="mode-grid">
                 <button id="btn-grasp" class="mode-card">
-                    <i class="fas fa-eye"></i>
-                    <span>视觉抓取</span>
+                    <span>👁️ 视觉抓取</span>
                 </button>
                 <button id="btn-follow" class="mode-card">
-                    <i class="fas fa-hand-holding-hand"></i>
-                    <span>手臂跟随</span>
+                    <span>🤝 手臂跟随</span>
                 </button>
                 <button id="btn-point" class="mode-card">
-                    <i class="fas fa-fingerprint"></i>
-                    <span>指尖抓取</span>
+                    <span>👆 指尖抓取</span>
                 </button>
             </div>
         </div>
@@ -53,8 +44,7 @@
         <div class="nav-section">
             <div class="section-title">夹爪控制</div>
             <button id="btn-gripper" class="action-btn">
-                <i class="fas fa-compress-arrows-alt"></i>
-                <span>切换夹爪</span>
+                <span>🗜️ 切换夹爪</span>
             </button>
         </div>
 
@@ -140,6 +130,8 @@
         </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/eventemitter2@6/lib/eventemitter2.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/roslib@1/build/roslib.min.js"></script>
     <script src="js/main.js"></script>
 </body>
 </html>

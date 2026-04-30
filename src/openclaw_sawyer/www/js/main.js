@@ -6,6 +6,11 @@
 window.onload = function () {
     console.log("Sawyer Cockpit initializing...");
 
+    if (typeof ROSLIB === 'undefined') {
+        alert("错误: 无法加载 ROS 核心库。请检查网络连接。");
+        return;
+    }
+
     // UI Helper
     function safeUI(id, action) {
         var el = document.getElementById(id);
@@ -21,31 +26,39 @@ window.onload = function () {
 
     // 1. ROS Setup
     var hostname = window.location.hostname;
+    updateLog("Attempting connection to: " + hostname);
+    
     var ros = new ROSLIB.Ros({ url: 'ws://' + hostname + ':9090' });
 
+    var connectionTimeout = setTimeout(function() {
+        if (!ros.isConnected) {
+            updateLog("Connection Timeout. Check if rosbridge is running.");
+            alert("连接超时。请检查机器人端 rosbridge 是否启动。");
+        }
+    }, 10000);
+
     ros.on('connection', function() {
+        clearTimeout(connectionTimeout);
         updateLog("Connected to ROS Master.");
         safeUI('connection-status', function(el) { 
             el.innerText = '系统在线'; 
             el.className = 'status-badge online'; 
         });
+        // Start video feeds only after ROS is up
+        refreshVideos();
     });
 
     ros.on('error', function(err) {
-        updateLog("ROS Error: " + JSON.stringify(err));
+        updateLog("ROS Error: Check 9090 port.");
         safeUI('connection-status', function(el) { el.innerText = '连接异常'; el.className = 'status-badge'; });
-    });
-
-    ros.on('close', function() {
-        updateLog("ROS Connection closed.");
     });
 
     // 2. Video Streams
     function refreshVideos() {
+        updateLog("Loading video streams...");
         safeUI('video-head', function(el) { el.src = 'http://' + hostname + ':8080/stream?topic=/io/internal_camera/head_camera/image_rect_color&quality=50'; });
         safeUI('video-hand', function(el) { el.src = 'http://' + hostname + ':8080/stream?topic=/io/internal_camera/right_hand_camera/image_rect_color&quality=50'; });
     }
-    refreshVideos();
 
     // 3. Topics & Services
     var jointTopic = new ROSLIB.Topic({ ros: ros, name: '/sawyer_joints', messageType: 'sensor_msgs/JointState' });
@@ -133,7 +146,7 @@ window.onload = function () {
     safeUI('btn-gripper', function(btn) {
         btn.onclick = function() {
             gripperOpen = !gripperOpen;
-            btn.innerHTML = gripperOpen ? '<i class="fas fa-expand-arrows-alt"></i><span>打开夹爪</span>' : '<i class="fas fa-compress-arrows-alt"></i><span>关闭夹爪</span>';
+            btn.innerHTML = gripperOpen ? '<span>🗜️ 打开夹爪</span>' : '<span>🗜️ 关闭夹爪</span>';
             gripperTopic.publish(new ROSLIB.Message({ data: gripperOpen }));
         };
     });
