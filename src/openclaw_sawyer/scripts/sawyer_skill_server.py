@@ -59,17 +59,11 @@ class SawyerSkillServer:
         except Exception as e:
             rospy.logwarn("Could not connect to Sawyer Head: %s", e)
         
-        # Camera control
-        # Note: Sawyer may only support streaming one camera at a time
+        # Camera control - cameras OFF by default, controlled via web buttons
         self.cameras = None
         try:
             self.cameras = intera_interface.Cameras()
-            if self.cameras.verify_camera_exists("head_camera"):
-                self.cameras.start_streaming("head_camera")
-                rospy.loginfo("Head camera streaming started.")
-            if self.cameras.verify_camera_exists("right_hand_camera"):
-                self.cameras.start_streaming("right_hand_camera")
-                rospy.loginfo("Right hand camera streaming started.")
+            rospy.loginfo("Camera interface ready (cameras off by default).")
         except Exception as e:
             rospy.logwarn("Camera initialization error: %s", e)
 
@@ -86,6 +80,8 @@ class SawyerSkillServer:
         rospy.Service("/sawyer_point", SetBool, self.handle_point_toggle)
         rospy.Service("/sawyer_trigger", Trigger, self.handle_trigger_grasp)
         rospy.Service("/sawyer_stop", Trigger, self.handle_stop)
+        rospy.Service("/sawyer_head_cam", SetBool, self.handle_head_cam)
+        rospy.Service("/sawyer_hand_cam", SetBool, self.handle_hand_cam)
         
         # Topics
         self.joint_state_pub = rospy.Publisher("/sawyer_state", JointState, queue_size=1)
@@ -166,8 +162,40 @@ class SawyerSkillServer:
 
     def handle_gripper_command(self, msg):
         if self.gripper is None or self.skill_active: return
-            if msg.data: self.gripper.open()
-            else: self.gripper.close()
+        if msg.data: self.gripper.open()
+        else: self.gripper.close()
+
+    def handle_head_cam(self, req):
+        """Toggle head camera streaming."""
+        if self.skill_active:
+            return SetBoolResponse(success=False, message="Skill is running, camera locked.")
+        if self.cameras is None:
+            return SetBoolResponse(success=False, message="Camera interface not available.")
+        try:
+            if req.data:
+                self.cameras.start_streaming("head_camera")
+                return SetBoolResponse(success=True, message="Head camera ON.")
+            else:
+                self.cameras.stop_streaming("head_camera")
+                return SetBoolResponse(success=True, message="Head camera OFF.")
+        except Exception as e:
+            return SetBoolResponse(success=False, message=str(e))
+
+    def handle_hand_cam(self, req):
+        """Toggle right hand camera streaming."""
+        if self.skill_active:
+            return SetBoolResponse(success=False, message="Skill is running, camera locked.")
+        if self.cameras is None:
+            return SetBoolResponse(success=False, message="Camera interface not available.")
+        try:
+            if req.data:
+                self.cameras.start_streaming("right_hand_camera")
+                return SetBoolResponse(success=True, message="Hand camera ON.")
+            else:
+                self.cameras.stop_streaming("right_hand_camera")
+                return SetBoolResponse(success=True, message="Hand camera OFF.")
+        except Exception as e:
+            return SetBoolResponse(success=False, message=str(e))
 
     def handle_grasp_toggle(self, req):
         return self._toggle_process("grasp", req.data)
@@ -195,15 +223,14 @@ class SawyerSkillServer:
                 self.target_joints = {}
 
                 # Stop cameras so the skill can manage them independently
-                try:
-                    if self.cameras:
-                        if self.cameras.verify_camera_exists("head_camera"):
-                            self.cameras.stop_streaming("head_camera")
-                        if self.cameras.verify_camera_exists("right_hand_camera"):
-                            self.cameras.stop_streaming("right_hand_camera")
-                        rospy.loginfo("Cameras released for skill: %s", name)
-                except Exception as e:
-                    rospy.logwarn("Error stopping cameras: %s", e)
+                if self.cameras:
+                    for cam in ["head_camera", "right_hand_camera"]:
+                        try:
+                            if self.cameras.verify_camera_exists(cam):
+                                self.cameras.stop_streaming(cam)
+                                rospy.loginfo("Stopped camera: %s", cam)
+                        except Exception as e:
+                            rospy.logwarn("Could not stop %s: %s", cam, e)
 
                 self.processes[name] = subprocess.Popen(self.commands[name], preexec_fn=os.setsid)
                 return SetBoolResponse(success=True, message=f"{name} started.")

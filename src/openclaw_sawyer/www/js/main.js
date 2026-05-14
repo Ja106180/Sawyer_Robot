@@ -44,8 +44,7 @@ window.onload = function () {
             el.innerText = '系统在线'; 
             el.className = 'status-badge online'; 
         });
-        // Start video feeds only after ROS is up
-        refreshVideos();
+        // Cameras are off by default, user controls them via buttons
     });
 
     ros.on('error', function(err) {
@@ -71,6 +70,8 @@ window.onload = function () {
     var followSrv = new ROSLIB.Service({ ros: ros, name: '/sawyer_follow', serviceType: 'std_srvs/SetBool' });
     var pointSrv = new ROSLIB.Service({ ros: ros, name: '/sawyer_point', serviceType: 'std_srvs/SetBool' });
     var stopSrv = new ROSLIB.Service({ ros: ros, name: '/sawyer_stop', serviceType: 'std_srvs/Trigger' });
+    var headCamSrv = new ROSLIB.Service({ ros: ros, name: '/sawyer_head_cam', serviceType: 'std_srvs/SetBool' });
+    var handCamSrv = new ROSLIB.Service({ ros: ros, name: '/sawyer_hand_cam', serviceType: 'std_srvs/SetBool' });
 
     // 3.1 Emergency Stop
     safeUI('btn-estop', function(btn) {
@@ -273,4 +274,35 @@ window.onload = function () {
     bindMode('btn-grasp', graspSrv, "Visual Grasping");
     bindMode('btn-follow', followSrv, "Arm Following");
     bindMode('btn-point', pointSrv, "Point to Grasp");
+
+    // 7. Camera Toggle Buttons
+    function bindCam(btnId, srv, videoId, streamUrl, label) {
+        safeUI(btnId, function(btn) {
+            var active = false;
+            btn.onclick = function() {
+                active = !active;
+                srv.callService(new ROSLIB.ServiceRequest({ data: active }), function(res) {
+                    if (res.success) {
+                        btn.classList.toggle('active', active);
+                        if (active) {
+                            safeUI(videoId, function(el) { el.src = streamUrl; });
+                        } else {
+                            safeUI(videoId, function(el) { el.src = ''; });
+                        }
+                        updateLog(label + (active ? ' ON' : ' OFF'));
+                    } else {
+                        active = !active;
+                        updateLog(label + ' failed: ' + res.message);
+                    }
+                });
+            };
+        });
+    }
+
+    bindCam('btn-head-cam', headCamSrv, 'video-head',
+        'http://' + hostname + ':8080/stream?topic=/io/internal_camera/head_camera/image_rect_color&quality=50',
+        'Head Camera');
+    bindCam('btn-hand-cam', handCamSrv, 'video-hand',
+        'http://' + hostname + ':8080/stream?topic=/io/internal_camera/right_hand_camera/image_raw&quality=50',
+        'Hand Camera');
 };
