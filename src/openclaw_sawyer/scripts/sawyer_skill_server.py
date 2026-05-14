@@ -60,13 +60,16 @@ class SawyerSkillServer:
             rospy.logwarn("Could not connect to Sawyer Head: %s", e)
         
         # Camera control
+        # Note: Sawyer may only support streaming one camera at a time
         self.cameras = None
         try:
             self.cameras = intera_interface.Cameras()
             if self.cameras.verify_camera_exists("head_camera"):
                 self.cameras.start_streaming("head_camera")
+                rospy.loginfo("Head camera streaming started.")
             if self.cameras.verify_camera_exists("right_hand_camera"):
                 self.cameras.start_streaming("right_hand_camera")
+                rospy.loginfo("Right hand camera streaming started.")
         except Exception as e:
             rospy.logwarn("Camera initialization error: %s", e)
 

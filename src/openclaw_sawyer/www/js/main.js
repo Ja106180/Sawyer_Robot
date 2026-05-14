@@ -57,7 +57,7 @@ window.onload = function () {
     function refreshVideos() {
         updateLog("Loading video streams...");
         safeUI('video-head', function(el) { el.src = 'http://' + hostname + ':8080/stream?topic=/io/internal_camera/head_camera/image_rect_color&quality=50'; });
-        safeUI('video-hand', function(el) { el.src = 'http://' + hostname + ':8080/stream?topic=/io/internal_camera/right_hand_camera/image_rect_color&quality=50'; });
+        safeUI('video-hand', function(el) { el.src = 'http://' + hostname + ':8080/stream?topic=/io/internal_camera/right_hand_camera/image_raw&quality=50'; });
     }
 
     // 3. Topics & Services
