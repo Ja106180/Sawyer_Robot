@@ -98,7 +98,7 @@ class SawyerSkillServer:
         rospy.loginfo("Sawyer Skill Server with Point-to-Grasp ready.")
 
     def sync_state(self, event):
-        if self.limb is None: return
+        if self.limb is None or self.skill_active: return
         state = JointState()
         state.header.stamp = rospy.Time.now()
         names = self.limb.joint_names()
@@ -150,18 +150,19 @@ class SawyerSkillServer:
                 self.head.set_pan(next_pan)
 
     def handle_joint_command(self, msg):
-        if self.limb is None: return
+        if self.limb is None or self.skill_active: return
         for i, name in enumerate(msg.name):
             if i < len(msg.position):
                 self.target_joints[name] = msg.position[i]
 
     def handle_head_command(self, msg):
-        if self.head is not None and len(msg.position) > 0:
+        if self.head is None or self.skill_active: return
+        if len(msg.position) > 0:
             self.target_head_pan = msg.position[0]
             self.head_controlled = True
 
     def handle_gripper_command(self, msg):
-        if self.gripper is not None:
+        if self.gripper is None or self.skill_active: return
             if msg.data: self.gripper.open()
             else: self.gripper.close()
 
