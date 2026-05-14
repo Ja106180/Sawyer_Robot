@@ -44,7 +44,8 @@ window.onload = function () {
             el.innerText = '系统在线'; 
             el.className = 'status-badge online'; 
         });
-        // Cameras are off by default, user controls them via buttons
+        // Always set video URLs so feeds show when cameras are active
+        refreshVideos();
     });
 
     ros.on('error', function(err) {
@@ -276,7 +277,7 @@ window.onload = function () {
     bindMode('btn-point', pointSrv, "Point to Grasp");
 
     // 7. Camera Toggle Buttons
-    function bindCam(btnId, srv, videoId, streamUrl, label) {
+    function bindCam(btnId, srv, label) {
         safeUI(btnId, function(btn) {
             var active = false;
             btn.onclick = function() {
@@ -284,11 +285,6 @@ window.onload = function () {
                 srv.callService(new ROSLIB.ServiceRequest({ data: active }), function(res) {
                     if (res.success) {
                         btn.classList.toggle('active', active);
-                        if (active) {
-                            safeUI(videoId, function(el) { el.src = streamUrl; });
-                        } else {
-                            safeUI(videoId, function(el) { el.src = ''; });
-                        }
                         updateLog(label + (active ? ' ON' : ' OFF'));
                     } else {
                         active = !active;
@@ -299,10 +295,6 @@ window.onload = function () {
         });
     }
 
-    bindCam('btn-head-cam', headCamSrv, 'video-head',
-        'http://' + hostname + ':8080/stream?topic=/io/internal_camera/head_camera/image_rect_color&quality=50',
-        'Head Camera');
-    bindCam('btn-hand-cam', handCamSrv, 'video-hand',
-        'http://' + hostname + ':8080/stream?topic=/io/internal_camera/right_hand_camera/image_raw&quality=50',
-        'Hand Camera');
+    bindCam('btn-head-cam', headCamSrv, 'Head Camera');
+    bindCam('btn-hand-cam', handCamSrv, 'Hand Camera');
 };

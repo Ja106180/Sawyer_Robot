@@ -5,7 +5,8 @@
   </node>
 
   <node name="sawyer_skill_server" pkg="openclaw_sawyer" type="sawyer_skill_server.py" output="screen" />
-  <node name="vision_insight_skill" pkg="openclaw_sawyer" type="vision_insight_skill.py" output="screen" />
+  <!-- vision_insight_skill disabled: it subscribes to head camera and interferes with visual_grasping/arm_follow -->
+  <!-- <node name="vision_insight_skill" pkg="openclaw_sawyer" type="vision_insight_skill.py" output="screen" /> -->
 
   <!-- 2. ROSBridge (Required for Web Interaction) -->
   <include file="$(find rosbridge_server)/launch/rosbridge_websocket.launch" />
