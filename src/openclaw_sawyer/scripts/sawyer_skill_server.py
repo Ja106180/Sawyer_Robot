@@ -22,6 +22,7 @@ class SawyerSkillServer:
             "follow": None,
             "point": None
         }
+        self.skill_active = False  # Pause control when skill process takes over
         
         # Paths to scripts
         rospack = rospkg.RosPack()
@@ -59,6 +60,7 @@ class SawyerSkillServer:
             rospy.logwarn("Could not connect to Sawyer Head: %s", e)
         
         # Camera control
+        self.cameras = None
         try:
             self.cameras = intera_interface.Cameras()
             if self.cameras.verify_camera_exists("head_camera"):
@@ -112,6 +114,9 @@ class SawyerSkillServer:
         self.smoothing_factor = self.speed_scale * 0.3
 
     def control_loop(self, event):
+        # Pause when a skill process is running to avoid fighting for control
+        if self.skill_active:
+            return
         if self.limb and self.target_joints:
             cmd_dict = {}
             for name, target_pos in self.target_joints.items():
@@ -154,6 +159,30 @@ class SawyerSkillServer:
     def _toggle_process(self, name, active):
         if active:
             if self.processes[name] is None or self.processes[name].poll() is not None:
+                # Stop any other running skills first
+                for other in self.processes:
+                    if other != name and self.processes[other] is not None:
+                        try:
+                            os.killpg(os.getpgid(self.processes[other].pid), signal.SIGTERM)
+                        except: pass
+                        self.processes[other] = None
+                        rospy.loginfo("Stopped conflicting skill: %s", other)
+
+                # Pause control loop to avoid fighting with skill process
+                self.skill_active = True
+                self.target_joints = {}
+
+                # Stop cameras so the skill can manage them independently
+                try:
+                    if self.cameras:
+                        if self.cameras.verify_camera_exists("head_camera"):
+                            self.cameras.stop_streaming("head_camera")
+                        if self.cameras.verify_camera_exists("right_hand_camera"):
+                            self.cameras.stop_streaming("right_hand_camera")
+                        rospy.loginfo("Cameras released for skill: %s", name)
+                except Exception as e:
+                    rospy.logwarn("Error stopping cameras: %s", e)
+
                 self.processes[name] = subprocess.Popen(["python3", self.paths[name]], preexec_fn=os.setsid)
                 return SetBoolResponse(success=True, message=f"{name} started.")
         else:
@@ -163,8 +192,46 @@ class SawyerSkillServer:
                 except:
                     pass
                 self.processes[name] = None
+                self._resume_control()
                 return SetBoolResponse(success=True, message=f"{name} stopped.")
         return SetBoolResponse(success=True)
+
+    def _resume_control(self):
+        """Resume control after skill process ends."""
+        # Don't resume if another skill is still running
+        any_active = any(p is not None and p.poll() is None for p in self.processes.values())
+        if any_active:
+            rospy.loginfo("Other skill still running, staying paused.")
+            return
+
+        # Sync current joint positions to avoid jumping
+        if self.limb:
+            curr = self.limb.joint_angles()
+            for jname, angle in curr.items():
+                self.current_joints[jname] = angle
+            self.target_joints = {}
+
+        # Sync head position
+        if self.head:
+            try:
+                self.current_head_pan = self.head.pan()
+                self.target_head_pan = self.current_head_pan
+            except Exception as e:
+                rospy.logwarn("Error syncing head: %s", e)
+
+        # Restart cameras
+        try:
+            if self.cameras:
+                if self.cameras.verify_camera_exists("head_camera"):
+                    self.cameras.start_streaming("head_camera")
+                if self.cameras.verify_camera_exists("right_hand_camera"):
+                    self.cameras.start_streaming("right_hand_camera")
+                rospy.loginfo("Cameras restarted.")
+        except Exception as e:
+            rospy.logwarn("Error restarting cameras: %s", e)
+
+        self.skill_active = False
+        rospy.loginfo("Control loop resumed.")
 
     def handle_stop(self, req):
         rospy.logwarn("EMERGENCY STOP TRIGGERED!")
@@ -175,10 +242,25 @@ class SawyerSkillServer:
                 except: pass
                 self.processes[name] = None
         self.target_joints = {}
+        self.skill_active = False
         if self.limb:
             curr = self.limb.joint_angles()
             self.limb.set_joint_positions(curr)
             for name, angle in curr.items(): self.current_joints[name] = angle
+        if self.head:
+            try:
+                self.current_head_pan = self.head.pan()
+                self.target_head_pan = self.current_head_pan
+            except: pass
+        # Restart cameras
+        try:
+            if self.cameras:
+                if self.cameras.verify_camera_exists("head_camera"):
+                    self.cameras.start_streaming("head_camera")
+                if self.cameras.verify_camera_exists("right_hand_camera"):
+                    self.cameras.start_streaming("right_hand_camera")
+        except Exception as e:
+            rospy.logwarn("Error restarting cameras: %s", e)
         return TriggerResponse(success=True, message="Stopped.")
 
     def handle_trigger_grasp(self, req):
