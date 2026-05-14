@@ -75,6 +75,7 @@ class SawyerSkillServer:
         self.current_joints = {}
         self.target_head_pan = 0.0
         self.current_head_pan = 0.0
+        self.head_controlled = False  # Only command head after web sets it
         
         # Services
         rospy.Service("/sawyer_grasp", SetBool, self.handle_grasp_toggle)
@@ -118,16 +119,28 @@ class SawyerSkillServer:
         if self.skill_active:
             return
         if self.limb and self.target_joints:
+            actual_angles = self.limb.joint_angles()
             cmd_dict = {}
+            joints_to_release = []
             for name, target_pos in self.target_joints.items():
-                curr_pos = self.current_joints.get(name, target_pos)
-                next_pos = curr_pos + self.smoothing_factor * (target_pos - curr_pos)
+                actual_pos = actual_angles.get(name, target_pos)
+                last_cmd = self.current_joints.get(name, actual_pos)
+                # Detect external movement (e.g. hand-guided via cuff button)
+                if abs(actual_pos - last_cmd) > 0.08:
+                    joints_to_release.append(name)
+                    self.current_joints[name] = actual_pos
+                    continue
+                next_pos = actual_pos + self.smoothing_factor * (target_pos - actual_pos)
                 cmd_dict[name] = next_pos
                 self.current_joints[name] = next_pos
+            # Release joints that were moved externally
+            for name in joints_to_release:
+                del self.target_joints[name]
             if cmd_dict:
                 self.limb.set_joint_positions(cmd_dict)
 
-        if self.head:
+        # Only command head if web interface explicitly set a target
+        if self.head and self.head_controlled:
             next_pan = self.current_head_pan + self.smoothing_factor * (self.target_head_pan - self.current_head_pan)
             self.current_head_pan = next_pan
             self.head.set_pan(next_pan)
@@ -141,6 +154,7 @@ class SawyerSkillServer:
     def handle_head_command(self, msg):
         if self.head is not None and len(msg.position) > 0:
             self.target_head_pan = msg.position[0]
+            self.head_controlled = True
 
     def handle_gripper_command(self, msg):
         if self.gripper is not None:
@@ -231,6 +245,7 @@ class SawyerSkillServer:
             rospy.logwarn("Error restarting cameras: %s", e)
 
         self.skill_active = False
+        self.head_controlled = False
         rospy.loginfo("Control loop resumed.")
 
     def handle_stop(self, req):
@@ -243,6 +258,7 @@ class SawyerSkillServer:
                 self.processes[name] = None
         self.target_joints = {}
         self.skill_active = False
+        self.head_controlled = False
         if self.limb:
             curr = self.limb.joint_angles()
             self.limb.set_joint_positions(curr)
