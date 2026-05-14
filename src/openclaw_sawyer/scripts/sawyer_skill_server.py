@@ -124,16 +124,15 @@ class SawyerSkillServer:
             joints_to_release = []
             for name, target_pos in self.target_joints.items():
                 actual_pos = actual_angles.get(name, target_pos)
-                last_cmd = self.current_joints.get(name, actual_pos)
-                # Detect external movement (e.g. hand-guided via cuff button)
-                if abs(actual_pos - last_cmd) > 0.08:
+                # Auto-release: joint reached target, stop commanding it
+                if abs(actual_pos - target_pos) < 0.01:
                     joints_to_release.append(name)
                     self.current_joints[name] = actual_pos
                     continue
                 next_pos = actual_pos + self.smoothing_factor * (target_pos - actual_pos)
                 cmd_dict[name] = next_pos
                 self.current_joints[name] = next_pos
-            # Release joints that were moved externally
+            # Release converged joints so arm is free for manual movement
             for name in joints_to_release:
                 del self.target_joints[name]
             if cmd_dict:
@@ -141,9 +140,14 @@ class SawyerSkillServer:
 
         # Only command head if web interface explicitly set a target
         if self.head and self.head_controlled:
-            next_pan = self.current_head_pan + self.smoothing_factor * (self.target_head_pan - self.current_head_pan)
-            self.current_head_pan = next_pan
-            self.head.set_pan(next_pan)
+            actual_pan = self.head.pan()
+            if abs(actual_pan - self.target_head_pan) < 0.01:
+                self.head_controlled = False
+                self.current_head_pan = actual_pan
+            else:
+                next_pan = self.current_head_pan + self.smoothing_factor * (self.target_head_pan - self.current_head_pan)
+                self.current_head_pan = next_pan
+                self.head.set_pan(next_pan)
 
     def handle_joint_command(self, msg):
         if self.limb is None: return
