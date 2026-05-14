@@ -24,12 +24,12 @@ class SawyerSkillServer:
         }
         self.skill_active = False  # Pause control when skill process takes over
         
-        # Paths to scripts
+        # Commands to launch each skill
         rospack = rospkg.RosPack()
-        self.paths = {
-            "grasp": os.path.join(rospack.get_path('visual_grasping'), 'scripts', 'grasp.py'),
-            "follow": os.path.join(rospack.get_path('arm_follow'), 'scripts', 'arm_follow_node.py'),
-            "point": os.path.join(rospack.get_path('openclaw_sawyer'), 'scripts', 'point_grasp_skill.py')
+        self.commands = {
+            "grasp": ["roslaunch", "visual_grasping", "grasp.launch"],
+            "follow": ["roslaunch", "arm_follow", "arm_follow.launch"],
+            "point": ["python3", os.path.join(rospack.get_path('openclaw_sawyer'), 'scripts', 'point_grasp_skill.py')]
         }
         
         # Speed scaling and smoothing
@@ -201,7 +201,7 @@ class SawyerSkillServer:
                 except Exception as e:
                     rospy.logwarn("Error stopping cameras: %s", e)
 
-                self.processes[name] = subprocess.Popen(["python3", self.paths[name]], preexec_fn=os.setsid)
+                self.processes[name] = subprocess.Popen(self.commands[name], preexec_fn=os.setsid)
                 return SetBoolResponse(success=True, message=f"{name} started.")
         else:
             if self.processes[name] is not None:
