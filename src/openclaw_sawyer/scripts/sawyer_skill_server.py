@@ -59,7 +59,14 @@ class SawyerSkillServer:
         self.cameras = None
         try:
             self.cameras = intera_interface.Cameras()
-            rospy.loginfo("Camera interface ready (cameras off by default).")
+            # Explicitly stop all cameras (Sawyer may have them on by default)
+            for cam in ["head_camera", "right_hand_camera"]:
+                try:
+                    if self.cameras.verify_camera_exists(cam):
+                        self.cameras.stop_streaming(cam)
+                except:
+                    pass
+            rospy.loginfo("Camera interface ready (all cameras stopped).")
         except Exception as e:
             rospy.logwarn("Camera initialization error: %s", e)
         
@@ -314,6 +321,13 @@ class SawyerSkillServer:
                 self.skill_active = True
                 self.target_joints = {}
 
+                # Exit Limb control mode to prevent SDK command timeout interference
+                if self.limb:
+                    try:
+                        self.limb.exit_control_mode()
+                    except Exception as e:
+                        rospy.logwarn("Error exiting control mode: %s", e)
+
                 # Stop cameras so the skill can manage them independently
                 if self.cameras:
                     for cam in ["head_camera", "right_hand_camera"]:
@@ -350,7 +364,10 @@ class SawyerSkillServer:
             curr = self.limb.joint_angles()
             for jname, angle in curr.items():
                 self.current_joints[jname] = angle
+                self.last_command[jname] = angle  # Reset spring-damper state
+                self.joint_velocity[jname] = 0.0
             self.target_joints = {}
+            self.last_update_time = rospy.Time.now()
 
         # Sync head position
         if self.head:
@@ -373,6 +390,7 @@ class SawyerSkillServer:
 
         self.skill_active = False
         self.head_controlled = False
+        self.head_velocity = 0.0
         rospy.loginfo("Control loop resumed.")
 
     def handle_stop(self, req):
