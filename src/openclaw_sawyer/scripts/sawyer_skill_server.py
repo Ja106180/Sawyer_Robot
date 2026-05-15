@@ -63,16 +63,18 @@ class SawyerSkillServer:
         except Exception as e:
             rospy.logwarn("Camera initialization error: %s", e)
         
-        # Virtual spring-damper parameters (from visual.cpp initialization phase, exactly the same)
-        # omega = natural frequency, zeta = damping ratio
+        # Virtual spring-damper parameters (tuned for smooth web joystick/slider control)
+        # omega = natural frequency (responsiveness), zeta = damping ratio (1.0=critical, >1=overdamped)
+        # J0 (base): overdamped to prevent oscillation of the heavy base
+        # J1-J6: critically damped for smooth, fast response without overshoot
         self.spring_params = {
-            "right_j0": {"omega": 18.0, "zeta": 0.1, "max_delta": 2.0, "snap": 0.03},
-            "right_j1": {"omega": 14.0, "zeta": 0.5, "max_delta": 2.0, "snap": 0.05},
-            "right_j2": {"omega": 14.0, "zeta": 0.5, "max_delta": 2.0, "snap": 0.05},
-            "right_j3": {"omega": 14.0, "zeta": 0.5, "max_delta": 2.0, "snap": 0.05},
-            "right_j4": {"omega": 14.0, "zeta": 0.5, "max_delta": 2.0, "snap": 0.05},
-            "right_j5": {"omega": 14.0, "zeta": 0.5, "max_delta": 2.0, "snap": 0.05},
-            "right_j6": {"omega": 14.0, "zeta": 0.5, "max_delta": 2.0, "snap": 0.05},
+            "right_j0": {"omega": 6.0, "zeta": 1.5, "max_delta": 0.5, "snap": 0.02},
+            "right_j1": {"omega": 8.0, "zeta": 1.0, "max_delta": 0.6, "snap": 0.02},
+            "right_j2": {"omega": 8.0, "zeta": 1.0, "max_delta": 0.6, "snap": 0.02},
+            "right_j3": {"omega": 8.0, "zeta": 1.0, "max_delta": 0.6, "snap": 0.02},
+            "right_j4": {"omega": 8.0, "zeta": 1.0, "max_delta": 0.6, "snap": 0.02},
+            "right_j5": {"omega": 8.0, "zeta": 1.0, "max_delta": 0.6, "snap": 0.02},
+            "right_j6": {"omega": 8.0, "zeta": 1.0, "max_delta": 0.6, "snap": 0.02},
         }
         self.joint_velocity = {}   # velocity state for spring-damper
         self.last_command = {}     # last commanded position
