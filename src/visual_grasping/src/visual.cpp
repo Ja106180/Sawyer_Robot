@@ -1091,17 +1091,25 @@ private:
       seed_state.name = joint_names_;
       for (const auto& name : joint_names_)
       {
+        double seed_pos = 0.0;
         if (current_joint_positions_.find(name) != current_joint_positions_.end())
         {
-          seed_state.position.push_back(current_joint_positions_[name]);
+          seed_pos = current_joint_positions_[name];
         }
-        else
-        {
-          seed_state.position.push_back(0.0);
-        }
+        
+        // Bias j1 and j3 to force an 'elbow-up' IK solution. 
+        if (name == "right_j1" && seed_pos < 0.5) seed_pos = 0.8;
+        if (name == "right_j3" && seed_pos < 0.5) seed_pos = 1.2;
+
+        seed_state.position.push_back(seed_pos);
       }
       ik_srv.request.seed_mode = ik_srv.request.SEED_USER;
       ik_srv.request.seed_angles.push_back(seed_state);
+
+      // Strictly enforce this posture using nullspace biasing
+      ik_srv.request.use_nullspace_goal.push_back(true);
+      ik_srv.request.nullspace_goal.push_back(seed_state);
+      ik_srv.request.nullspace_gain.push_back(0.4);
     }
 
     ROS_INFO("Calling IK for target pose (go_to style)...");
@@ -1260,7 +1268,6 @@ private:
         }
         
         // Bias j1 and j3 to force an 'elbow-up' IK solution. 
-        // If they start near 0, the solver often picks 'elbow-down' (moving downwards).
         if (name == "right_j1" && seed_pos < 0.5) seed_pos = 0.8;
         if (name == "right_j3" && seed_pos < 0.5) seed_pos = 1.2;
 
@@ -1268,6 +1275,11 @@ private:
       }
       ik_srv.request.seed_mode = ik_srv.request.SEED_USER;
       ik_srv.request.seed_angles.push_back(seed_state);
+
+      // Strictly enforce this posture using nullspace biasing
+      ik_srv.request.use_nullspace_goal.push_back(true);
+      ik_srv.request.nullspace_goal.push_back(seed_state);
+      ik_srv.request.nullspace_gain.push_back(0.4);
     }
 
     ROS_INFO("Calling IK for grasp-style target...");
