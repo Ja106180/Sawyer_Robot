@@ -1078,10 +1078,29 @@ private:
     ROS_INFO("Target orientation quaternion (go_to style): [x=%.3f, y=%.3f, z=%.3f, w=%.3f]",
              q_target.x(), q_target.y(), q_target.z(), q_target.w());
 
-    // IK request (reuse class ik_client_)
     intera_core_msgs::SolvePositionIK ik_srv;
     ik_srv.request.pose_stamp.push_back(target_pose);
     ik_srv.request.tip_names.push_back("right_hand");
+
+    // Use current joint positions as seed to prevent radically different IK solutions
+    if (has_joint_state_)
+    {
+      sensor_msgs::JointState seed_state;
+      seed_state.name = joint_names_;
+      for (const auto& name : joint_names_)
+      {
+        if (current_joint_positions_.find(name) != current_joint_positions_.end())
+        {
+          seed_state.position.push_back(current_joint_positions_[name]);
+        }
+        else
+        {
+          seed_state.position.push_back(0.0);
+        }
+      }
+      ik_srv.request.seed_mode = ik_srv.request.SEED_USER;
+      ik_srv.request.seed_angles.push_back(seed_state);
+    }
 
     ROS_INFO("Calling IK for target pose (go_to style)...");
     if (!ik_client_.call(ik_srv))
@@ -1224,6 +1243,26 @@ private:
     intera_core_msgs::SolvePositionIK ik_srv;
     ik_srv.request.pose_stamp.push_back(target_pose);
     ik_srv.request.tip_names.push_back("right_hand");
+
+    // Use current joint positions as seed to prevent radically different IK solutions
+    if (has_joint_state_)
+    {
+      sensor_msgs::JointState seed_state;
+      seed_state.name = joint_names_;
+      for (const auto& name : joint_names_)
+      {
+        if (current_joint_positions_.find(name) != current_joint_positions_.end())
+        {
+          seed_state.position.push_back(current_joint_positions_[name]);
+        }
+        else
+        {
+          seed_state.position.push_back(0.0);
+        }
+      }
+      ik_srv.request.seed_mode = ik_srv.request.SEED_USER;
+      ik_srv.request.seed_angles.push_back(seed_state);
+    }
 
     ROS_INFO("Calling IK for grasp-style target...");
     if (!ik_client_.call(ik_srv))
