@@ -32,10 +32,6 @@ class SawyerSkillServer:
             "point": ["python3", os.path.join(rospack.get_path('openclaw_sawyer'), 'scripts', 'point_grasp_skill.py')]
         }
         
-        # Speed scaling and smoothing
-        self.speed_scale = 0.3
-        self.smoothing_factor = 0.1  
-        
         # Sawyer interfaces
         self.limb = None
         self.gripper = None
@@ -66,6 +62,32 @@ class SawyerSkillServer:
             rospy.loginfo("Camera interface ready (cameras off by default).")
         except Exception as e:
             rospy.logwarn("Camera initialization error: %s", e)
+        
+        # Virtual spring-damper parameters (from visual.cpp initialization phase, exactly the same)
+        # omega = natural frequency, zeta = damping ratio
+        self.spring_params = {
+            "right_j0": {"omega": 18.0, "zeta": 0.1, "max_delta": 2.0, "snap": 0.03},
+            "right_j1": {"omega": 14.0, "zeta": 0.5, "max_delta": 2.0, "snap": 0.05},
+            "right_j2": {"omega": 14.0, "zeta": 0.5, "max_delta": 2.0, "snap": 0.05},
+            "right_j3": {"omega": 14.0, "zeta": 0.5, "max_delta": 2.0, "snap": 0.05},
+            "right_j4": {"omega": 14.0, "zeta": 0.5, "max_delta": 2.0, "snap": 0.05},
+            "right_j5": {"omega": 14.0, "zeta": 0.5, "max_delta": 2.0, "snap": 0.05},
+            "right_j6": {"omega": 14.0, "zeta": 0.5, "max_delta": 2.0, "snap": 0.05},
+        }
+        self.joint_velocity = {}   # velocity state for spring-damper
+        self.last_command = {}     # last commanded position
+        self.last_update_time = rospy.Time.now()
+
+        # Joint limits (from visual.cpp)
+        self.joint_limits = {
+            "right_j0": (-3.05, 3.05),
+            "right_j1": (-1.2, 1.4),
+            "right_j2": (-1.5, 1.5),
+            "right_j3": (-1.5, 1.5),
+            "right_j4": (-2.0, 2.0),
+            "right_j5": (-2.0, 1.7),
+            "right_j6": (-3.0, 3.0),
+        }
 
         # Interpolation state
         self.target_joints = {}
@@ -73,6 +95,7 @@ class SawyerSkillServer:
         self.target_head_pan = 0.0
         self.current_head_pan = 0.0
         self.head_controlled = False  # Only command head after web sets it
+        self.head_velocity = 0.0     # velocity for head spring-damper
         
         # Services
         rospy.Service("/sawyer_grasp", SetBool, self.handle_grasp_toggle)
@@ -90,11 +113,11 @@ class SawyerSkillServer:
         self.gripper_sub = rospy.Subscriber("/sawyer_gripper", Bool, self.handle_gripper_command)
         self.speed_sub = rospy.Subscriber("/sawyer_speed", Float32, self.handle_speed_command)
 
-        # Timers
+        # Timers - 100Hz control loop (matching visual.cpp)
         rospy.Timer(rospy.Duration(0.1), self.sync_state)
-        rospy.Timer(rospy.Duration(0.02), self.control_loop) 
+        rospy.Timer(rospy.Duration(0.01), self.control_loop)
 
-        rospy.loginfo("Sawyer Skill Server with Point-to-Grasp ready.")
+        rospy.loginfo("Sawyer Skill Server with spring-damper control ready.")
 
     def sync_state(self, event):
         if self.limb is None or self.skill_active: return
@@ -110,43 +133,110 @@ class SawyerSkillServer:
                 self.current_joints[name] = angle
 
     def handle_speed_command(self, msg):
-        self.speed_scale = max(0.01, min(1.0, msg.data))
-        self.smoothing_factor = self.speed_scale * 0.3
+        pass  # Speed is now controlled by spring-damper dynamics, not a simple factor
 
     def control_loop(self, event):
-        # Pause when a skill process is running to avoid fighting for control
+        # Pause when a skill process is running
         if self.skill_active:
             return
+
+        # --- Joint spring-damper control ---
         if self.limb and self.target_joints:
+            now = rospy.Time.now()
+            dt = (now - self.last_update_time).to_sec()
+            if dt < 0.001:
+                dt = 0.001
+            elif dt > 0.05:
+                dt = 0.05
+            self.last_update_time = now
+
             actual_angles = self.limb.joint_angles()
-            cmd_dict = {}
+            cmd = JointCommand()
+            cmd.mode = JointCommand.POSITION_MODE
+            cmd.header.stamp = now
+
             joints_to_release = []
-            for name, target_pos in self.target_joints.items():
-                actual_pos = actual_angles.get(name, target_pos)
-                # Auto-release: joint reached target, stop commanding it
-                if abs(actual_pos - target_pos) < 0.01:
-                    joints_to_release.append(name)
-                    self.current_joints[name] = actual_pos
+            for name in list(self.target_joints.keys()):
+                target_pos = self.target_joints[name]
+                params = self.spring_params.get(name)
+                if params is None:
                     continue
-                next_pos = actual_pos + self.smoothing_factor * (target_pos - actual_pos)
-                cmd_dict[name] = next_pos
-                self.current_joints[name] = next_pos
-            # Release converged joints so arm is free for manual movement
+                limits = self.joint_limits.get(name, (-3.14, 3.14))
+                target_pos = max(limits[0], min(limits[1], target_pos))
+
+                # Initialize last_command from actual position if not set
+                if name not in self.last_command:
+                    self.last_command[name] = actual_angles.get(name, target_pos)
+                if name not in self.joint_velocity:
+                    self.joint_velocity[name] = 0.0
+
+                q_prev = self.last_command[name]
+                q_ref = target_pos
+                v = self.joint_velocity[name]
+                omega = params["omega"]
+                zeta = params["zeta"]
+                snap = params["snap"]
+                max_delta = params["max_delta"]
+
+                # Spring-damper dynamics: a = omega^2 * e - 2*zeta*omega*v
+                e = q_ref - q_prev
+                a = omega * omega * e - 2.0 * zeta * omega * v
+                v += a * dt
+                q_new = q_prev + v * dt
+
+                # Snap to target to avoid overshoot
+                err_before = q_ref - q_prev
+                err_after = q_ref - q_new
+                if abs(err_before) < snap and abs(err_after) < snap and err_before * err_after <= 0.0:
+                    q_new = q_ref
+                    v = 0.0
+
+                # Clamp delta per cycle
+                delta = q_new - q_prev
+                if abs(delta) > max_delta:
+                    delta = max_delta if delta > 0 else -max_delta
+                    q_new = q_prev + delta
+                    v = delta / dt
+
+                # Clamp to joint limits
+                q_new = max(limits[0], min(limits[1], q_new))
+
+                self.last_command[name] = q_new
+                self.joint_velocity[name] = v
+                self.current_joints[name] = q_new
+                cmd.names.append(name)
+                cmd.position.append(q_new)
+
+                # Auto-release when converged
+                actual_pos = actual_angles.get(name, q_new)
+                if abs(actual_pos - target_pos) < 0.01 and abs(v) < 0.01:
+                    joints_to_release.append(name)
+
             for name in joints_to_release:
                 del self.target_joints[name]
-            if cmd_dict:
-                self.limb.set_joint_positions(cmd_dict)
+                if name in self.joint_velocity:
+                    self.joint_velocity[name] = 0.0
 
-        # Only command head if web interface explicitly set a target
+            if cmd.names:
+                self.limb.set_joint_positions(dict(zip(cmd.names, cmd.position)))
+
+        # --- Head spring-damper control ---
         if self.head and self.head_controlled:
+            now = rospy.Time.now()
+            dt = 0.01  # fixed dt for head
             actual_pan = self.head.pan()
-            if abs(actual_pan - self.target_head_pan) < 0.01:
+            if abs(actual_pan - self.target_head_pan) < 0.01 and abs(self.head_velocity) < 0.01:
                 self.head_controlled = False
                 self.current_head_pan = actual_pan
+                self.head_velocity = 0.0
             else:
-                next_pan = self.current_head_pan + self.smoothing_factor * (self.target_head_pan - self.current_head_pan)
-                self.current_head_pan = next_pan
-                self.head.set_pan(next_pan)
+                omega = 10.0
+                zeta = 0.8
+                e = self.target_head_pan - self.current_head_pan
+                a = omega * omega * e - 2.0 * zeta * omega * self.head_velocity
+                self.head_velocity += a * dt
+                self.current_head_pan += self.head_velocity * dt
+                self.head.set_pan(self.current_head_pan)
 
     def handle_joint_command(self, msg):
         if self.limb is None or self.skill_active: return
