@@ -242,13 +242,15 @@ public:
 private:
   void initJointLimits()
   {
+    // Use wider limits closer to Sawyer's actual URDF limits to allow IK solutions to execute
+    // Actual URDF: j1[-3.8, 2.27], j2[-3.04, 3.04], j3[-3.04, 3.04], j4/j5[-2.97, 2.97], j6[-4.71, 4.71]
     joint_limits_["right_j0"] = { -3.05, 3.05 };
-    joint_limits_["right_j1"] = { -1.2, 1.4 };
-    joint_limits_["right_j2"] = { -1.5, 1.5 };
-    joint_limits_["right_j3"] = { -1.5, 1.5 };
-    joint_limits_["right_j4"] = { -2.0, 2.0 };
-    joint_limits_["right_j5"] = { -2.0, 1.7 };
-    joint_limits_["right_j6"] = { -3.0, 3.0 };
+    joint_limits_["right_j1"] = { -3.80, 2.27 };
+    joint_limits_["right_j2"] = { -3.04, 3.04 };
+    joint_limits_["right_j3"] = { -3.04, 3.04 };
+    joint_limits_["right_j4"] = { -2.97, 2.97 };
+    joint_limits_["right_j5"] = { -2.97, 2.97 };
+    joint_limits_["right_j6"] = { -4.71, 4.71 };
   }
   
   bool loadCalibration(const std::string& path)
