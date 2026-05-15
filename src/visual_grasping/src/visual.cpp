@@ -407,6 +407,7 @@ private:
     const double init_timeout = 10.0;  // Overall timeout for initialization
     
     ROS_INFO("Phase 1: Starting parallel initialization (j5, j1, j2, j4, j3, j6) with spring-damper dynamics...");
+    suspend_control_ = true;  // Prevent controlLoop from sending conflicting commands
     
     while (ros::ok() && (ros::Time::now() - start_time).toSec() < init_timeout)
     {
@@ -443,6 +444,7 @@ private:
     // Phase 2: Move j0 separately (to avoid oscillation with other joints)
     ROS_INFO("Phase 2: Moving j0 separately to %.3f...", 1.5);
     moveJointToPosition("right_j0", 1.5);  // Keep base joint lifted during idle to avoid collision with table
+    suspend_control_ = false;  // Resume controlLoop after initialization
     
     // Head still uses external script (not in joint_names_)
     ROS_INFO("Setting head angle (using external script)...");
@@ -1474,8 +1476,11 @@ private:
     // Step 0: Rotate base joint (j0) to 0.0 before starting actual grasp
     // This moves the arm to the object position without blocking the camera
     // Use smooth spring-damper dynamics instead of external script
+    // Must suspend controlLoop to avoid conflicting 'hold position' commands
     ROS_INFO("Step 0: Rotating base joint (j0) to 0.0 using smooth spring-damper...");
+    suspend_control_ = true;
     bool j0_success = moveJointToPosition("right_j0", 0.0);
+    suspend_control_ = false;
     if (!j0_success)
     {
       ROS_WARN("Failed to rotate j0 to 0.0, but continuing with grasp...");
