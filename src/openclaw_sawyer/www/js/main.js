@@ -235,11 +235,11 @@ window.onload = function () {
     // Joystick 1: J0 (Base) & J1 (Shoulder)
     new VirtualJoystick('joystick-base', (x, y) => {
         if (Math.abs(x) > 0.1) {
-            currentAngles[0] += x * 0.05; // Base rotation step
+            currentAngles[0] -= x * 0.05; // Base rotation step
             sendSingleJoint(0, currentAngles[0]);
         }
         if (Math.abs(y) > 0.1) {
-            currentAngles[1] += y * 0.05; // Shoulder pitch step
+            currentAngles[1] -= y * 0.05; // Shoulder pitch step
             sendSingleJoint(1, currentAngles[1]);
         }
     });
@@ -247,11 +247,11 @@ window.onload = function () {
     // Joystick 2: J2 (Elbow Rotation) & J3 (Elbow Bend)
     new VirtualJoystick('joystick-elbow', (x, y) => {
         if (Math.abs(x) > 0.1) {
-            currentAngles[2] += x * 0.05;
+            currentAngles[2] -= x * 0.05;
             sendSingleJoint(2, currentAngles[2]);
         }
         if (Math.abs(y) > 0.1) {
-            currentAngles[3] += y * 0.05;
+            currentAngles[3] -= y * 0.05;
             sendSingleJoint(3, currentAngles[3]);
         }
     });
