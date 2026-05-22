@@ -247,7 +247,7 @@ window.onload = function () {
     // Joystick 2: J2 (Elbow Rotation) & J3 (Elbow Bend)
     new VirtualJoystick('joystick-elbow', (x, y) => {
         if (Math.abs(x) > 0.1) {
-            currentAngles[2] -= x * 0.05;
+            currentAngles[2] += x * 0.05;
             sendSingleJoint(2, currentAngles[2]);
         }
         if (Math.abs(y) > 0.1) {
