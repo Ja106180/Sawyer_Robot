@@ -115,12 +115,20 @@ class SawyerSkillServer:
         rospy.Service("/sawyer_head_cam", SetBool, self.handle_head_cam)
         rospy.Service("/sawyer_hand_cam", SetBool, self.handle_hand_cam)
         
+        # OpenClaw alias services
+        rospy.Service("/sawyer_skill_server/set_grasp_mode", SetBool, self.handle_grasp_toggle)
+        rospy.Service("/sawyer_skill_server/set_follow_mode", SetBool, self.handle_follow_toggle)
+        
         # Topics
         self.joint_state_pub = rospy.Publisher("/sawyer_state", JointState, queue_size=1)
         self.joint_sub = rospy.Subscriber("/sawyer_joints", JointState, self.handle_joint_command)
         self.head_sub = rospy.Subscriber("/sawyer_head", JointState, self.handle_head_command)
         self.gripper_sub = rospy.Subscriber("/sawyer_gripper", Bool, self.handle_gripper_command)
         self.speed_sub = rospy.Subscriber("/sawyer_speed", Float32, self.handle_speed_command)
+
+        # OpenClaw alias topics
+        self.joint_sub_openclaw = rospy.Subscriber("/sawyer_skill_server/cmd_joints", JointState, self.handle_joint_command)
+        self.gripper_sub_openclaw = rospy.Subscriber("/sawyer_skill_server/cmd_gripper", Bool, self.handle_gripper_command)
 
         # Timers - 100Hz control loop (matching visual.cpp)
         rospy.Timer(rospy.Duration(0.1), self.sync_state)
