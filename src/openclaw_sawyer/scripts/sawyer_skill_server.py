@@ -70,6 +70,20 @@ class SawyerSkillServer:
         except Exception as e:
             rospy.logwarn("Camera initialization error: %s", e)
         
+        # Head lights control - turn ON by default when package runs
+        self.lights = None
+        try:
+            self.lights = intera_interface.Lights()
+            # Turn on head status lights (red, green, blue)
+            for light in ["head_red_light", "head_green_light", "head_blue_light"]:
+                try:
+                    self.lights.set_light_state(light, True)
+                except:
+                    pass
+            rospy.loginfo("Successfully turned on Sawyer Head Lights.")
+        except Exception as e:
+            rospy.logwarn("Could not connect to Sawyer Lights: %s", e)
+        
         # Virtual spring-damper parameters (tuned for smooth web joystick/slider control)
         # omega = natural frequency (responsiveness), zeta = damping ratio (1.0=critical, >1=overdamped)
         # J0 (base): overdamped to prevent oscillation of the heavy base
