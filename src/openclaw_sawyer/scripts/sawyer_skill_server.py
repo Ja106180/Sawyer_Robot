@@ -437,7 +437,7 @@ class SawyerSkillServer:
         return TriggerResponse(success=True)
 
     def handle_reset(self, req):
-        rospy.loginfo("RESET TRIGGERED: Displaying face on head screen & resetting joints slowly.")
+        rospy.loginfo("RESET TRIGGERED: Displaying face on head screen, resetting head pan & joints slowly.")
         
         # 1. Start the image display script in the background
         try:
@@ -446,11 +446,19 @@ class SawyerSkillServer:
         except Exception as e:
             rospy.logwarn("Failed to launch head display script: %s", e)
 
-        # 2. Pause the active control loop and clear targets
+        # 2. Reset head pan to -1.5
+        if self.head:
+            try:
+                rospy.loginfo("Resetting head pan to -1.5...")
+                self.head.set_pan(-1.5)
+            except Exception as e:
+                rospy.logwarn("Failed to reset head pan: %s", e)
+
+        # 3. Pause the active control loop and clear targets
         self.skill_active = True
         self.target_joints = {}
 
-        # 3. Move the joints slowly to the target pose
+        # 4. Move the joints slowly to the target pose
         if self.limb:
             try:
                 # Set speed to a very slow value for a continuous, smooth and slow movement
@@ -475,7 +483,7 @@ class SawyerSkillServer:
             except Exception as e:
                 rospy.logerr("Error moving to reset pose: %s", e)
 
-        # 4. Resume normal control and sync state
+        # 5. Resume normal control and sync state
         self._resume_control()
         
         return TriggerResponse(success=True, message="Reset completed successfully.")
