@@ -72,15 +72,21 @@ class SawyerSkillServer:
         
         # Head lights control - turn ON by default when package runs
         self.lights = None
+        self.light_colors = [
+            (True, False, False),  # Red
+            (False, True, False),  # Green
+            (False, False, True),  # Blue
+            (True, True, False),   # Yellow
+            (True, False, True),   # Magenta/Purple
+            (False, True, True),   # Cyan
+            (True, True, True)     # White
+        ]
+        self.current_color_idx = 0
         try:
             self.lights = intera_interface.Lights()
-            # Turn on head status lights (red, green, blue)
-            for light in ["head_red_light", "head_green_light", "head_blue_light"]:
-                try:
-                    self.lights.set_light_state(light, True)
-                except:
-                    pass
-            rospy.loginfo("Successfully turned on Sawyer Head Lights.")
+            # Start 1Hz timer to cycle colors sequentially
+            rospy.Timer(rospy.Duration(1.0), self.cycle_head_lights)
+            rospy.loginfo("Successfully initialized Sawyer Head Lights color cycling.")
         except Exception as e:
             rospy.logwarn("Could not connect to Sawyer Lights: %s", e)
         
@@ -501,6 +507,24 @@ class SawyerSkillServer:
         self._resume_control()
         
         return TriggerResponse(success=True, message="Reset completed successfully.")
+
+    def cycle_head_lights(self, event):
+        if self.lights is None:
+            return
+        try:
+            # Get the current color states (R, G, B)
+            r, g, b = self.light_colors[self.current_color_idx]
+            
+            # Apply to head lights
+            self.lights.set_light_state("head_red_light", r)
+            self.lights.set_light_state("head_green_light", g)
+            self.lights.set_light_state("head_blue_light", b)
+            
+            # Advance index to the next color in the cycle
+            self.current_color_idx = (self.current_color_idx + 1) % len(self.light_colors)
+        except Exception as e:
+            pass
+
 
 
 if __name__ == '__main__':
