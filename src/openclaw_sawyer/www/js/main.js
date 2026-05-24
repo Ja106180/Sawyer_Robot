@@ -73,6 +73,7 @@ window.onload = function () {
     var stopSrv = new ROSLIB.Service({ ros: ros, name: '/sawyer_stop', serviceType: 'std_srvs/Trigger' });
     var headCamSrv = new ROSLIB.Service({ ros: ros, name: '/sawyer_head_cam', serviceType: 'std_srvs/SetBool' });
     var handCamSrv = new ROSLIB.Service({ ros: ros, name: '/sawyer_hand_cam', serviceType: 'std_srvs/SetBool' });
+    var resetSrv = new ROSLIB.Service({ ros: ros, name: '/sawyer_reset', serviceType: 'std_srvs/Trigger' });
 
     // 3.1 Emergency Stop
     safeUI('btn-estop', function(btn) {
@@ -80,6 +81,22 @@ window.onload = function () {
             stopSrv.callService(new ROSLIB.ServiceRequest({}), function(res) {
                 updateLog("!!! EMERGENCY STOP EXECUTED !!!");
                 alert("紧急停止已触发！所有进程已关闭，机械臂已锁定。");
+            });
+        };
+    });
+
+    // 3.2 One-click Reset
+    safeUI('btn-reset', function(btn) {
+        btn.onclick = function() {
+            updateLog("Sending reset command to Sawyer...");
+            resetSrv.callService(new ROSLIB.ServiceRequest({}), function(res) {
+                if (res.success) {
+                    updateLog("Sawyer reset sequence complete.");
+                    alert("复位完成：头部已显示表情，关节已平滑慢速复位！");
+                } else {
+                    updateLog("Sawyer reset failed: " + res.message);
+                    alert("复位失败：" + res.message);
+                }
             });
         };
     });

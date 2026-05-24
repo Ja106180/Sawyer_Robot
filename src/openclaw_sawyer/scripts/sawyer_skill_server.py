@@ -114,6 +114,7 @@ class SawyerSkillServer:
         rospy.Service("/sawyer_stop", Trigger, self.handle_stop)
         rospy.Service("/sawyer_head_cam", SetBool, self.handle_head_cam)
         rospy.Service("/sawyer_hand_cam", SetBool, self.handle_hand_cam)
+        rospy.Service("/sawyer_reset", Trigger, self.handle_reset)
         
         # OpenClaw alias services
         rospy.Service("/sawyer_skill_server/set_grasp_mode", SetBool, self.handle_grasp_toggle)
@@ -434,6 +435,51 @@ class SawyerSkillServer:
 
     def handle_trigger_grasp(self, req):
         return TriggerResponse(success=True)
+
+    def handle_reset(self, req):
+        rospy.loginfo("RESET TRIGGERED: Displaying face on head screen & resetting joints slowly.")
+        
+        # 1. Start the image display script in the background
+        try:
+            rospy.loginfo("Running face image display on head screen...")
+            subprocess.Popen(["rosrun", "intera_examples", "head_display_image.py", "-f", "/home/mycar/Image/face.png"])
+        except Exception as e:
+            rospy.logwarn("Failed to launch head display script: %s", e)
+
+        # 2. Pause the active control loop and clear targets
+        self.skill_active = True
+        self.target_joints = {}
+
+        # 3. Move the joints slowly to the target pose
+        if self.limb:
+            try:
+                # Set speed to a very slow value for a continuous, smooth and slow movement
+                self.limb.set_joint_position_speed(0.1)
+                
+                target_pose = {
+                    "right_j0": 0.0,
+                    "right_j1": 0.0,
+                    "right_j2": 0.0,
+                    "right_j3": -1.6,
+                    "right_j4": 0.0,
+                    "right_j5": 1.5,
+                    "right_j6": 0.0
+                }
+                
+                rospy.loginfo("Moving joints slowly to [0.0, 0.0, 0.0, -1.6, 0.0, 1.5, 0.0]...")
+                self.limb.move_to_joint_positions(target_pose)
+                
+                # Restore default speed
+                self.limb.set_joint_position_speed(0.3)
+                rospy.loginfo("Reset joint movement complete.")
+            except Exception as e:
+                rospy.logerr("Error moving to reset pose: %s", e)
+
+        # 4. Resume normal control and sync state
+        self._resume_control()
+        
+        return TriggerResponse(success=True, message="Reset completed successfully.")
+
 
 if __name__ == '__main__':
     try:
