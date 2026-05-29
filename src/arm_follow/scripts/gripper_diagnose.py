@@ -67,8 +67,11 @@ def main():
     rospy.loginfo("[4] Attempting to listen to raw I/O topics...")
     
     # Let's inspect the active topics first to find the exact namespace
-    from rosnode import get_topic_types
-    topics = [t[0] for t in get_topic_types()]
+    try:
+        topics = [t[0] for t in rospy.get_published_topics()]
+    except Exception as e:
+        rospy.logwarn("Failed to get topic list: %s", e)
+        topics = []
     
     io_topics = [t for t in topics if "end_effector" in t]
     rospy.loginfo("Found the following end_effector topics in ROS:")
