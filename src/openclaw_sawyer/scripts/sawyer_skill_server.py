@@ -469,6 +469,9 @@ class SawyerSkillServer:
             rospack = rospkg.RosPack()
             actions_dir = os.path.join(rospack.get_path('openclaw_sawyer'), 'actions')
             
+            if not os.path.exists(actions_dir):
+                os.makedirs(actions_dir)
+            
             if cmd == "record_start":
                 # Stop any active skill
                 for p in self.processes:
