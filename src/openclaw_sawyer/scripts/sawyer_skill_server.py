@@ -8,6 +8,7 @@ import rospkg
 import signal
 import json
 import threading
+import csv
 from std_srvs.srv import SetBool, SetBoolResponse, Trigger, TriggerResponse
 from std_msgs.msg import Bool, Float32, String
 from sensor_msgs.msg import JointState, Image
@@ -566,17 +567,66 @@ class SawyerSkillServer:
                     rospy.logwarn(f"Playback file not found: {file_path}")
                     continue
                 
-                rospy.loginfo(f"Playing back: {action}")
-                self.processes["playback"] = subprocess.Popen(["rosrun", "intera_examples", "joint_position_file_playback.py", "-f", file_path], preexec_fn=os.setsid)
-                
-                while self.processes["playback"] and self.processes["playback"].poll() is None:
-                    if not self.teach_playback_active:
-                        try: os.killpg(os.getpgid(self.processes["playback"].pid), signal.SIGTERM)
-                        except: pass
-                        break
-                    rospy.sleep(0.1)
+                rospy.loginfo(f"Playing back in-process: {action}")
+                try:
+                    with open(file_path, 'r') as f:
+                        reader = csv.reader(f)
+                        headers = next(reader)
+                        joint_names = headers[1:]
+                        start_time = None
+                        
+                        for row in reader:
+                            if not self.teach_playback_active:
+                                break
+                            
+                            t = float(row[0])
+                            positions = [float(x) for x in row[1:]]
+                            
+                            if start_time is None:
+                                start_pose = {}
+                                for i, name in enumerate(joint_names):
+                                    if name.startswith('right_j'):
+                                        start_pose[name] = positions[i]
+                                
+                                # Check if already near start pose
+                                current_angles = self.limb.joint_angles()
+                                max_err = 0.0
+                                for jname, jtarget in start_pose.items():
+                                    err = abs(current_angles.get(jname, jtarget) - jtarget)
+                                    if err > max_err: max_err = err
+                                
+                                if max_err > 0.08:
+                                    rospy.loginfo(f"Moving to start pose (max err: {max_err:.3f})...")
+                                    self.limb.move_to_joint_positions(start_pose, timeout=15.0)
+                                    rospy.sleep(0.5)
+                                
+                                start_time = rospy.get_time()
+                                first_t_csv = t
+                                continue
+                                
+                            target_time = start_time + (t - first_t_csv)
+                            
+                            while rospy.get_time() < target_time and self.teach_playback_active:
+                                rospy.sleep(0.002)
+                                
+                            if not self.teach_playback_active:
+                                break
+                                
+                            limb_cmd = {}
+                            for i, name in enumerate(joint_names):
+                                if name.startswith('right_j'):
+                                    limb_cmd[name] = positions[i]
+                                elif 'gripper' in name.lower() and self.gripper:
+                                    if positions[i] > 50.0 or positions[i] > 0.5: # SDK handles differently
+                                        self.gripper.open()
+                                    else:
+                                        self.gripper.close()
+                                        
+                            if limb_cmd:
+                                self.limb.set_joint_positions(limb_cmd)
+                except Exception as e:
+                    rospy.logerr(f"In-process playback error: {e}")
                     
-                self.processes["playback"] = None
             if not loop:
                 break
         
