@@ -515,6 +515,14 @@ class SawyerSkillServer:
                 self._resume_control()
                 rospy.loginfo("Cancelled recording.")
                 
+            elif cmd == "action_delete":
+                name = data.get("name", "")
+                if name:
+                    del_file = os.path.join(actions_dir, f"{name}.csv")
+                    if os.path.exists(del_file):
+                        os.remove(del_file)
+                        rospy.loginfo(f"Deleted action file: {del_file}")
+                
             elif cmd == "play_start":
                 actions = data.get("actions", [])
                 loop = data.get("loop", False)

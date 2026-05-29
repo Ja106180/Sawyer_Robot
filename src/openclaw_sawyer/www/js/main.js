@@ -335,13 +335,30 @@ window.onload = function () {
                 var html = '';
                 data.forEach(action => {
                     html += `
-                        <div class="teach-item">
-                            <input type="checkbox" value="${action}" class="action-checkbox">
-                            <span>${action}</span>
+                        <div class="teach-item" style="display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <input type="checkbox" value="${action}" class="action-checkbox">
+                                <span>${action}</span>
+                            </div>
+                            <span class="delete-action-btn" data-name="${action}" style="cursor: pointer; color: var(--danger); font-size: 14px; padding: 0 5px;" title="删除动作">🗑️</span>
                         </div>
                     `;
                 });
                 listContainer.innerHTML = html;
+
+                // Bind delete buttons
+                var delBtns = listContainer.querySelectorAll('.delete-action-btn');
+                delBtns.forEach(btn => {
+                    btn.onclick = function(e) {
+                        e.stopPropagation();
+                        var name = this.getAttribute('data-name');
+                        if (confirm('确定要删除动作 "' + name + '" 吗？此操作无法恢复。')) {
+                            sendTeachCmd({ cmd: 'action_delete', name: name });
+                            updateLog('Deleted action: ' + name);
+                            setTimeout(fetchActionsList, 500);
+                        }
+                    };
+                });
             })
             .catch(err => {
                 console.error("Failed to fetch actions list:", err);
