@@ -558,12 +558,10 @@ class SawyerSkillServer:
             rospy.logerr(f"Error handling teach cmd: {e}")
 
     def _playback_loop(self, actions, loop, actions_dir):
-        playback_rate = rospy.Rate(100)
-        
         while self.teach_playback_active:
             for action in actions:
-                if not self.teach_playback_active:
-                    break
+                if not self.teach_playback_active: break
+                
                 file_path = os.path.join(actions_dir, f"{action}.csv")
                 if not os.path.exists(file_path):
                     rospy.logwarn(f"Playback file not found: {file_path}")
@@ -575,67 +573,58 @@ class SawyerSkillServer:
                         reader = csv.reader(f)
                         headers = next(reader)
                         joint_names = headers[1:]
-                        start_time = None
+                        rows = list(reader)
                         
-                        for row in reader:
-                            if not self.teach_playback_active:
-                                break
+                    if not rows:
+                        continue
+                        
+                    first_t = float(rows[0][0])
+                    start_positions = [float(x) for x in rows[0][1:]]
+                    start_pose = {}
+                    for i, name in enumerate(joint_names):
+                        if name.startswith('right_j'):
+                            start_pose[name] = start_positions[i]
                             
-                            t = float(row[0])
-                            positions = [float(x) for x in row[1:]]
-                            
-                            if start_time is None:
-                                start_pose = {}
-                                for i, name in enumerate(joint_names):
-                                    if name.startswith('right_j'):
-                                        start_pose[name] = positions[i]
+                    current_angles = self.limb.joint_angles()
+                    max_err = 0.0
+                    for jn, jt in start_pose.items():
+                        err = abs(current_angles.get(jn, jt) - jt)
+                        if err > max_err: max_err = err
+                        
+                    if max_err > 0.08:
+                        rospy.loginfo(f"Moving to start pose (max err: {max_err:.3f})...")
+                        self.limb.move_to_joint_positions(start_pose, timeout=10.0)
+                        rospy.sleep(0.5)
+                        
+                    start_time = rospy.get_time()
+                    
+                    for row in rows:
+                        if not self.teach_playback_active: break
+                        
+                        t = float(row[0])
+                        positions = [float(x) for x in row[1:]]
+                        target_time = start_time + (t - first_t)
+                        
+                        limb_cmd = {}
+                        for i, name in enumerate(joint_names):
+                            if name.startswith('right_j'):
+                                limb_cmd[name] = positions[i]
                                 
-                                # Check if already near start pose
-                                current_angles = self.limb.joint_angles()
-                                max_err = 0.0
-                                for jname, jtarget in start_pose.items():
-                                    err = abs(current_angles.get(jname, jtarget) - jtarget)
-                                    if err > max_err: max_err = err
-                                
-                                if max_err > 0.08:
-                                    rospy.loginfo(f"Moving to start pose (max err: {max_err:.3f})...")
-                                    self.limb.move_to_joint_positions(start_pose, timeout=15.0)
-                                    rospy.sleep(0.5)
-                                
-                                start_time = rospy.get_time()
-                                first_t_csv = t
-                                continue
-                                
-                            target_time = start_time + (t - first_t_csv)
-                            
-                            # Failsafe: if the time gap is absurdly large (e.g., > 10 seconds), clip it
-                            wait_time = target_time - rospy.get_time()
-                            if wait_time > 10.0:
-                                rospy.logwarn(f"Warning: Absurdly large time gap in CSV ({wait_time}s). Clipping target_time.")
-                                start_time -= (wait_time - 0.1) # Fast-forward
-                                target_time = rospy.get_time() + 0.1
-                                
-                            limb_cmd = {}
-                            for i, name in enumerate(joint_names):
-                                if name.startswith('right_j'):
-                                    limb_cmd[name] = positions[i]
-                            
-                            # Continuously publish the target command until it's time for the next frame
-                            while rospy.get_time() < target_time and self.teach_playback_active:
-                                if limb_cmd:
-                                    self.limb.set_joint_positions(limb_cmd)
-                                playback_rate.sleep()
-                                
-                            if not self.teach_playback_active:
+                        loop_count = 0
+                        while rospy.get_time() < target_time and self.teach_playback_active:
+                            if limb_cmd:
+                                self.limb.set_joint_positions(limb_cmd)
+                            rospy.sleep(0.01)
+                            loop_count += 1
+                            if loop_count > 500:
+                                start_time = rospy.get_time() - (t - first_t)
                                 break
                                 
-                            # Handle gripper non-blockingly
-                            for i, name in enumerate(joint_names):
-                                if 'gripper' in name.lower() and self.gripper:
-                                    try:
-                                        self.gripper.set_position(positions[i])
-                                    except Exception:
-                                        pass
+                        for i, name in enumerate(joint_names):
+                            if 'gripper' in name.lower() and self.gripper:
+                                try: self.gripper.set_position(positions[i])
+                                except: pass
+                                
                 except Exception as e:
                     rospy.logerr(f"In-process playback error: {e}")
                     
