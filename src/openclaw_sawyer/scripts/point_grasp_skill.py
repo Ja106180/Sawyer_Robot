@@ -62,7 +62,7 @@ class PointGraspSkill:
         
         self.bridge = CvBridge()
         self.limb = intera_interface.Limb("right")
-        self.gripper = intera_interface.Gripper("right")
+        self.gripper = intera_interface.Gripper("right_gripper")
         
         # MediaPipe Setup
         if mp:

@@ -44,7 +44,7 @@ class SawyerSkillServer:
             rospy.logwarn("Could not connect to Sawyer Limb: %s", e)
 
         try:
-            self.gripper = intera_interface.Gripper("right")
+            self.gripper = intera_interface.Gripper("right_gripper")
             rospy.loginfo("Successfully connected to Sawyer Gripper.")
         except Exception as e:
             rospy.logwarn("Could not connect to Sawyer Gripper: %s", e)
