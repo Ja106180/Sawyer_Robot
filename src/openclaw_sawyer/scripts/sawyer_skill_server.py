@@ -557,29 +557,34 @@ class SawyerSkillServer:
             rospy.logerr(f"Error handling teach cmd: {e}")
 
     def _playback_loop(self, actions, loop, actions_dir):
-        while self.teach_playback_active:
-            for action in actions:
-                if not self.teach_playback_active:
-                    break
-                file_path = os.path.join(actions_dir, f"{action}.csv")
-                if not os.path.exists(file_path):
-                    rospy.logwarn(f"Playback file not found: {file_path}")
-                    continue
+        file_paths = []
+        for action in actions:
+            file_path = os.path.join(actions_dir, f"{action}.csv")
+            if os.path.exists(file_path):
+                file_paths.append(file_path)
+            else:
+                rospy.logwarn(f"Playback file not found: {file_path}")
                 
-                rospy.loginfo(f"Playing back: {action}")
-                self.processes["playback"] = subprocess.Popen(["rosrun", "intera_examples", "joint_position_file_playback.py", "-f", file_path], preexec_fn=os.setsid)
-                
-                while self.processes["playback"] and self.processes["playback"].poll() is None:
-                    if not self.teach_playback_active:
-                        try: os.killpg(os.getpgid(self.processes["playback"].pid), signal.SIGTERM)
-                        except: pass
-                        break
-                    rospy.sleep(0.1)
-                    
-                self.processes["playback"] = None
-            if not loop:
-                break
+        if not file_paths:
+            self.teach_playback_active = False
+            self._resume_control()
+            return
+
+        cmd = ["rosrun", "openclaw_sawyer", "seamless_playback.py", "-f"] + file_paths
+        if loop:
+            cmd.append("--loop")
+            
+        rospy.loginfo(f"Starting seamless playback subprocess with: {actions}")
+        self.processes["playback"] = subprocess.Popen(cmd, preexec_fn=os.setsid)
         
+        while self.teach_playback_active and self.processes["playback"] and self.processes["playback"].poll() is None:
+            rospy.sleep(0.1)
+            
+        if self.processes["playback"]:
+            try: os.killpg(os.getpgid(self.processes["playback"].pid), signal.SIGTERM)
+            except: pass
+            self.processes["playback"] = None
+            
         self.teach_playback_active = False
         self._resume_control()
         rospy.loginfo("Playback loop finished.")
