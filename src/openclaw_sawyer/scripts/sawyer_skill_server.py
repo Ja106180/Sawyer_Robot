@@ -558,6 +558,8 @@ class SawyerSkillServer:
             rospy.logerr(f"Error handling teach cmd: {e}")
 
     def _playback_loop(self, actions, loop, actions_dir):
+        playback_rate = rospy.Rate(100)
+        
         while self.teach_playback_active:
             for action in actions:
                 if not self.teach_playback_active:
@@ -606,24 +608,26 @@ class SawyerSkillServer:
                                 
                             target_time = start_time + (t - first_t_csv)
                             
-                            while rospy.get_time() < target_time and self.teach_playback_active:
-                                rospy.sleep(0.002)
-                                
-                            if not self.teach_playback_active:
-                                break
-                                
                             limb_cmd = {}
                             for i, name in enumerate(joint_names):
                                 if name.startswith('right_j'):
                                     limb_cmd[name] = positions[i]
-                                elif 'gripper' in name.lower() and self.gripper:
+                            
+                            # Continuously publish the target command until it's time for the next frame
+                            while rospy.get_time() < target_time and self.teach_playback_active:
+                                if limb_cmd:
+                                    self.limb.set_joint_positions(limb_cmd)
+                                playback_rate.sleep()
+                                
+                            if not self.teach_playback_active:
+                                break
+                                
+                            for i, name in enumerate(joint_names):
+                                if 'gripper' in name.lower() and self.gripper:
                                     if positions[i] > 50.0 or positions[i] > 0.5: # SDK handles differently
                                         self.gripper.open()
                                     else:
                                         self.gripper.close()
-                                        
-                            if limb_cmd:
-                                self.limb.set_joint_positions(limb_cmd)
                 except Exception as e:
                     rospy.logerr(f"In-process playback error: {e}")
                     
