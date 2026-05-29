@@ -571,7 +571,7 @@ class SawyerSkillServer:
                 
                 while self.processes["playback"] and self.processes["playback"].poll() is None:
                     if not self.teach_playback_active:
-                        try: os.killpg(os.getpgid(self.processes["playback"].pid), signal.SIGTERM)
+                        try: os.killpg(os.getpgid(self.processes["playback"].pid), signal.SIGINT)
                         except: pass
                         break
                     rospy.sleep(0.1)
