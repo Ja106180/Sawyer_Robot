@@ -65,6 +65,50 @@
             <button id="btn-reset" class="action-btn">
                 <span>🔄 一键复位</span>
             </button>
+        <div class="nav-section">
+            <div class="section-title">示教与回放 (Teach & Replay)</div>
+            
+            <div class="mode-grid" id="record-controls-idle">
+                <button id="btn-record-start" class="mode-card" style="grid-column: span 2;">
+                    <span>🔴 创建 (开始拖拽示教)</span>
+                </button>
+            </div>
+            <div class="mode-grid" id="record-controls-active" style="display: none;">
+                <button id="btn-record-save" class="mode-card" style="border-color: var(--success); color: var(--success);">
+                    <span>💾 保存</span>
+                </button>
+                <button id="btn-record-cancel" class="mode-card" style="border-color: var(--danger); color: var(--danger);">
+                    <span>✖ 取消</span>
+                </button>
+            </div>
+
+            <div class="teach-list-container">
+                <div class="teach-list-header">已保存的动作序列</div>
+                <div id="teach-actions-list" class="teach-list">
+                    <!-- Action items injected by JS -->
+                    <div style="padding: 10px; color: var(--text-secondary); text-align: center;">正在加载...</div>
+                </div>
+            </div>
+
+            <div class="teach-options">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="chk-loop-action" checked>
+                    开启循环执行 (Loop)
+                </label>
+                <label class="checkbox-label">
+                    <input type="checkbox" id="chk-seq-action">
+                    按序列执行多动作
+                </label>
+            </div>
+
+            <div class="mode-grid" style="margin-top: 15px;">
+                <button id="btn-play-start" class="action-btn play-btn">
+                    <span>▶️ 开启</span>
+                </button>
+                <button id="btn-play-stop" class="action-btn stop-btn">
+                    <span>⏹ 关闭</span>
+                </button>
+            </div>
         </div>
 
         <div class="log-panel">

@@ -6,8 +6,10 @@ import subprocess
 import os
 import rospkg
 import signal
+import json
+import threading
 from std_srvs.srv import SetBool, SetBoolResponse, Trigger, TriggerResponse
-from std_msgs.msg import Bool, Float32
+from std_msgs.msg import Bool, Float32, String
 from sensor_msgs.msg import JointState, Image
 from intera_core_msgs.msg import JointCommand
 import intera_interface
@@ -20,9 +22,13 @@ class SawyerSkillServer:
         self.processes = {
             "grasp": None,
             "follow": None,
-            "point": None
+            "point": None,
+            "record": None,
+            "playback": None
         }
         self.skill_active = False  # Pause control when skill process takes over
+        self.teach_playback_active = False
+        self.teach_playback_thread = None
         
         # Commands to launch each skill
         rospack = rospkg.RosPack()
@@ -150,6 +156,9 @@ class SawyerSkillServer:
         # OpenClaw alias topics
         self.joint_sub_openclaw = rospy.Subscriber("/sawyer_skill_server/cmd_joints", JointState, self.handle_joint_command)
         self.gripper_sub_openclaw = rospy.Subscriber("/sawyer_skill_server/cmd_gripper", Bool, self.handle_gripper_command)
+
+        # Teach & Replay command subscriber
+        self.teach_sub = rospy.Subscriber("/sawyer_teach_cmd", String, self.handle_teach_cmd)
 
         # Timers - 100Hz control loop (matching visual.cpp)
         rospy.Timer(rospy.Duration(0.1), self.sync_state)
@@ -452,6 +461,117 @@ class SawyerSkillServer:
         except Exception as e:
             rospy.logwarn("Error restarting cameras: %s", e)
         return TriggerResponse(success=True, message="Stopped.")
+
+    def handle_teach_cmd(self, msg):
+        try:
+            data = json.loads(msg.data)
+            cmd = data.get("cmd")
+            rospack = rospkg.RosPack()
+            actions_dir = os.path.join(rospack.get_path('openclaw_sawyer'), 'actions')
+            
+            if cmd == "record_start":
+                # Stop any active skill
+                for p in self.processes:
+                    if self.processes[p] is not None:
+                        try: os.killpg(os.getpgid(self.processes[p].pid), signal.SIGTERM)
+                        except: pass
+                        self.processes[p] = None
+                self.skill_active = True
+                
+                temp_file = os.path.join(actions_dir, "temp_recording.csv")
+                self.processes["record"] = subprocess.Popen(["rosrun", "intera_examples", "joint_recorder.py", "-f", temp_file], preexec_fn=os.setsid)
+                rospy.loginfo("Started recording to temp file.")
+                
+            elif cmd == "record_save":
+                if self.processes.get("record") is not None:
+                    try:
+                        os.killpg(os.getpgid(self.processes["record"].pid), signal.SIGINT)
+                        self.processes["record"].wait(timeout=5)
+                    except: pass
+                    self.processes["record"] = None
+                    
+                name = data.get("name", "action")
+                temp_file = os.path.join(actions_dir, "temp_recording.csv")
+                save_file = os.path.join(actions_dir, f"{name}.csv")
+                if os.path.exists(temp_file):
+                    os.rename(temp_file, save_file)
+                
+                self._resume_control()
+                rospy.loginfo(f"Saved recording to {save_file}.")
+                
+            elif cmd == "record_cancel":
+                if self.processes.get("record") is not None:
+                    try: os.killpg(os.getpgid(self.processes["record"].pid), signal.SIGTERM)
+                    except: pass
+                    self.processes["record"] = None
+                
+                temp_file = os.path.join(actions_dir, "temp_recording.csv")
+                if os.path.exists(temp_file):
+                    os.remove(temp_file)
+                
+                self._resume_control()
+                rospy.loginfo("Cancelled recording.")
+                
+            elif cmd == "play_start":
+                actions = data.get("actions", [])
+                loop = data.get("loop", False)
+                if not actions: return
+                    
+                for p in self.processes:
+                    if self.processes[p] is not None:
+                        try: os.killpg(os.getpgid(self.processes[p].pid), signal.SIGTERM)
+                        except: pass
+                        self.processes[p] = None
+                        
+                self.skill_active = True
+                self.teach_playback_active = False
+                if self.teach_playback_thread:
+                    self.teach_playback_thread.join(timeout=2)
+                    
+                self.teach_playback_active = True
+                self.teach_playback_thread = threading.Thread(target=self._playback_loop, args=(actions, loop, actions_dir))
+                self.teach_playback_thread.daemon = True
+                self.teach_playback_thread.start()
+                rospy.loginfo(f"Started playback loop with actions: {actions}")
+                
+            elif cmd == "play_stop":
+                self.teach_playback_active = False
+                if self.processes.get("playback") is not None:
+                    try: os.killpg(os.getpgid(self.processes["playback"].pid), signal.SIGTERM)
+                    except: pass
+                    self.processes["playback"] = None
+                rospy.loginfo("Stopped playback.")
+                
+        except Exception as e:
+            rospy.logerr(f"Error handling teach cmd: {e}")
+
+    def _playback_loop(self, actions, loop, actions_dir):
+        while self.teach_playback_active:
+            for action in actions:
+                if not self.teach_playback_active:
+                    break
+                file_path = os.path.join(actions_dir, f"{action}.csv")
+                if not os.path.exists(file_path):
+                    rospy.logwarn(f"Playback file not found: {file_path}")
+                    continue
+                
+                rospy.loginfo(f"Playing back: {action}")
+                self.processes["playback"] = subprocess.Popen(["rosrun", "intera_examples", "joint_position_file_playback.py", "-f", file_path], preexec_fn=os.setsid)
+                
+                while self.processes["playback"] and self.processes["playback"].poll() is None:
+                    if not self.teach_playback_active:
+                        try: os.killpg(os.getpgid(self.processes["playback"].pid), signal.SIGTERM)
+                        except: pass
+                        break
+                    rospy.sleep(0.1)
+                    
+                self.processes["playback"] = None
+            if not loop:
+                break
+        
+        self.teach_playback_active = False
+        self._resume_control()
+        rospy.loginfo("Playback loop finished.")
 
     def handle_trigger_grasp(self, req):
         return TriggerResponse(success=True)

@@ -314,4 +314,115 @@ window.onload = function () {
 
     bindCam('btn-head-cam', headCamSrv, 'Head Camera');
     bindCam('btn-hand-cam', handCamSrv, 'Hand Camera');
+
+    // 8. Teach & Replay Logic
+    var teachCmdTopic = new ROSLIB.Topic({ ros: ros, name: '/sawyer_teach_cmd', messageType: 'std_msgs/String' });
+
+    function sendTeachCmd(cmdObj) {
+        var msg = new ROSLIB.Message({ data: JSON.stringify(cmdObj) });
+        teachCmdTopic.publish(msg);
+    }
+
+    function fetchActionsList() {
+        fetch('/api/actions')
+            .then(response => response.json())
+            .then(data => {
+                var listContainer = document.getElementById('teach-actions-list');
+                if (data.length === 0) {
+                    listContainer.innerHTML = '<div style="padding: 10px; color: var(--text-secondary); text-align: center;">暂无保存的动作</div>';
+                    return;
+                }
+                var html = '';
+                data.forEach(action => {
+                    html += `
+                        <div class="teach-item">
+                            <input type="checkbox" value="${action}" class="action-checkbox">
+                            <span>${action}</span>
+                        </div>
+                    `;
+                });
+                listContainer.innerHTML = html;
+            })
+            .catch(err => {
+                console.error("Failed to fetch actions list:", err);
+                document.getElementById('teach-actions-list').innerHTML = '<div style="padding: 10px; color: var(--danger); text-align: center;">加载失败</div>';
+            });
+    }
+
+    // Initial fetch
+    fetchActionsList();
+
+    // Record Controls
+    safeUI('btn-record-start', function(btn) {
+        btn.onclick = function() {
+            sendTeachCmd({ cmd: 'record_start' });
+            document.getElementById('record-controls-idle').style.display = 'none';
+            document.getElementById('record-controls-active').style.display = 'grid';
+            btn.classList.add('recording-active');
+            updateLog("Started recording trajectory. Drag the arm manually.");
+        };
+    });
+
+    safeUI('btn-record-save', function(btn) {
+        btn.onclick = function() {
+            var name = prompt("请输入要保存的动作名称 (仅限英文/数字/下划线):", "my_action_" + Math.floor(Math.random()*1000));
+            if (name) {
+                // simple sanitize
+                name = name.replace(/[^a-zA-Z0-9_]/g, '_');
+                sendTeachCmd({ cmd: 'record_save', name: name });
+                updateLog("Saving trajectory as: " + name);
+                setTimeout(fetchActionsList, 1500); // refresh list after a short delay
+            } else {
+                sendTeachCmd({ cmd: 'record_cancel' });
+                updateLog("Recording cancelled (no name provided).");
+            }
+            document.getElementById('record-controls-active').style.display = 'none';
+            document.getElementById('record-controls-idle').style.display = 'grid';
+            document.getElementById('btn-record-start').classList.remove('recording-active');
+        };
+    });
+
+    safeUI('btn-record-cancel', function(btn) {
+        btn.onclick = function() {
+            sendTeachCmd({ cmd: 'record_cancel' });
+            updateLog("Recording cancelled.");
+            document.getElementById('record-controls-active').style.display = 'none';
+            document.getElementById('record-controls-idle').style.display = 'grid';
+            document.getElementById('btn-record-start').classList.remove('recording-active');
+        };
+    });
+
+    // Playback Controls
+    safeUI('btn-play-start', function(btn) {
+        btn.onclick = function() {
+            var checkboxes = document.querySelectorAll('.action-checkbox:checked');
+            var selectedActions = Array.from(checkboxes).map(cb => cb.value);
+            
+            if (selectedActions.length === 0) {
+                alert("请至少选择一个保存的动作。");
+                return;
+            }
+
+            var loop = document.getElementById('chk-loop-action').checked;
+            var seq = document.getElementById('chk-seq-action').checked;
+
+            // If sequence is not checked but multiple selected, we still send them all but they play one by one?
+            // The backend iterates over the array. If they only wanted one, they should check one.
+            if (!seq && selectedActions.length > 1) {
+                selectedActions = [selectedActions[0]]; // Only play the first one if seq is off
+                updateLog("Sequence mode off. Only playing the first selected action.");
+            }
+
+            sendTeachCmd({ cmd: 'play_start', actions: selectedActions, loop: loop });
+            updateLog("Started playback: " + selectedActions.join(", ") + " (Loop: " + loop + ")");
+        };
+    });
+
+    safeUI('btn-play-stop', function(btn) {
+        btn.onclick = function() {
+            sendTeachCmd({ cmd: 'play_stop' });
+            updateLog("Playback stopped.");
+        };
+    });
+
 };

@@ -6,12 +6,30 @@ import rospy
 import http.server
 import socketserver
 import threading
+import json
 
 class MyHandler(http.server.SimpleHTTPRequestHandler):
     def end_headers(self):
         self.send_header('Access-Control-Allow-Origin', '*')
         self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate')
         super().end_headers()
+
+    def do_GET(self):
+        if self.path == '/api/actions':
+            package_path = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+            actions_dir = os.path.join(package_path, 'actions')
+            actions = []
+            if os.path.exists(actions_dir):
+                for f in os.listdir(actions_dir):
+                    if f.endswith('.csv'):
+                        actions.append(f[:-4])
+            actions.sort()
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps(actions).encode())
+        else:
+            super().do_GET()
 
 def start_server():
     rospy.init_node('web_dashboard_host_sawyer')
