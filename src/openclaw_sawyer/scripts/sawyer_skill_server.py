@@ -608,6 +608,13 @@ class SawyerSkillServer:
                                 
                             target_time = start_time + (t - first_t_csv)
                             
+                            # Failsafe: if the time gap is absurdly large (e.g., > 10 seconds), clip it
+                            wait_time = target_time - rospy.get_time()
+                            if wait_time > 10.0:
+                                rospy.logwarn(f"Warning: Absurdly large time gap in CSV ({wait_time}s). Clipping target_time.")
+                                start_time -= (wait_time - 0.1) # Fast-forward
+                                target_time = rospy.get_time() + 0.1
+                                
                             limb_cmd = {}
                             for i, name in enumerate(joint_names):
                                 if name.startswith('right_j'):
@@ -622,12 +629,13 @@ class SawyerSkillServer:
                             if not self.teach_playback_active:
                                 break
                                 
+                            # Handle gripper non-blockingly
                             for i, name in enumerate(joint_names):
                                 if 'gripper' in name.lower() and self.gripper:
-                                    if positions[i] > 50.0 or positions[i] > 0.5: # SDK handles differently
-                                        self.gripper.open()
-                                    else:
-                                        self.gripper.close()
+                                    try:
+                                        self.gripper.set_position(positions[i])
+                                    except Exception:
+                                        pass
                 except Exception as e:
                     rospy.logerr(f"In-process playback error: {e}")
                     
