@@ -8,6 +8,7 @@ import rospkg
 import signal
 import json
 import threading
+import urllib.request
 from std_srvs.srv import SetBool, SetBoolResponse, Trigger, TriggerResponse
 from std_msgs.msg import Bool, Float32, String
 from sensor_msgs.msg import JointState, Image
@@ -297,10 +298,33 @@ class SawyerSkillServer:
             self.target_head_pan = msg.position[0]
             self.head_controlled = True
 
+    def send_esp32_gripper_command(self, open_cmd):
+        def worker():
+            try:
+                action = "open" if open_cmd else "close"
+                url = "http://192.168.31.104/{}".format(action)
+                # 设置 1.0 秒超时，防止网络丢包卡死 ROS 主循环
+                with urllib.request.urlopen(url, timeout=1.0) as response:
+                    response.read()
+                rospy.loginfo("Successfully sent command to ESP32 Gripper: %s", action)
+            except Exception as e:
+                rospy.logwarn("Failed to send command to ESP32 Gripper: %s", e)
+
+        t = threading.Thread(target=worker)
+        t.daemon = True
+        t.start()
+
     def handle_gripper_command(self, msg):
+        # 1. 异步发送指令给 ESP32 WiFi 夹爪
+        self.send_esp32_gripper_command(msg.data)
+
+        # 2. 控制原装夹爪（保留兼容性逻辑）
         if self.gripper is None or self.skill_active: return
-        if msg.data: self.gripper.open()
-        else: self.gripper.close()
+        try:
+            if msg.data: self.gripper.open()
+            else: self.gripper.close()
+        except Exception as e:
+            rospy.logwarn("Failed to command built-in gripper: %s", e)
 
     def handle_head_cam(self, req):
         """Toggle head camera streaming."""
