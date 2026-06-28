@@ -73,7 +73,8 @@ class NumberGraspSkill:
             calib_path = os.path.join(rospack.get_path('Position_Calibration'), 'config', 'calibration.yaml')
             import yaml
             with open(calib_path, 'r') as f:
-                calib_data = yaml.safe_load(f)
+                # 必须使用 UnsafeLoader，因为 position.py 存入的 yaml 含有 numpy 数据类型的特殊标签
+                calib_data = yaml.load(f, Loader=yaml.UnsafeLoader)
                 self.H = np.array(calib_data['homography_matrix'])
                 rospy.loginfo(f"Successfully loaded Homography Matrix from {calib_path}")
         except Exception as e:
