@@ -147,7 +147,7 @@ class SawyerSkillServer:
         rospy.Service("/sawyer_reset", Trigger, self.handle_reset)
         
         # Hermes integration services
-        rospy.Service("/sawyer_skill_server/move_relative", String, self.handle_move_relative)
+        self.move_relative_sub = rospy.Subscriber("/sawyer_skill_server/move_relative", String, self.handle_move_relative)
         rospy.Service("/sawyer_skill_server/capture_head_cam", Trigger, self.handle_capture_head_cam)
         rospy.Service("/sawyer_skill_server/capture_hand_cam", Trigger, self.handle_capture_hand_cam)
         
@@ -744,9 +744,8 @@ class SawyerSkillServer:
                 self.target_head_pan = self.current_head_pan + deltas["head_pan"]
                 self.head_controlled = True
                 
-            return SetBoolResponse(success=True, message="Relative movement applied.")
         except Exception as e:
-            return SetBoolResponse(success=False, message=str(e))
+            rospy.logwarn(f"Failed to process relative move: {e}")
 
     def handle_capture_head_cam(self, req):
         """Capture an image from the head camera."""
@@ -810,7 +809,8 @@ if __name__ == '__main__':
     try:
         server = SawyerSkillServer()
         rospy.spin()
-    except Exception:
-        pass
+    except Exception as e:
+        import traceback
+        rospy.logerr("Fatal error in SawyerSkillServer: %s", traceback.format_exc())
     finally:
         cleanup_server_processes(None, None)
