@@ -27,66 +27,73 @@ import intera_interface
 from ultralytics import YOLO
 
 
-class ROSImageStream:
-    """ROS图像流包装器"""
-    
-    def __init__(self, topic: str, timeout: float = 30.0):
-        self.topic = topic
-        self.timeout = timeout
-        self.bridge = CvBridge()
-        self.latest_image = None
-        self.lock = Lock()
-        self.sub = rospy.Subscriber(topic, Image, self._image_callback, queue_size=1, buff_size=2**23)
-        rospy.loginfo("订阅ROS图像话题: %s", topic)
-        
-    def _image_callback(self, msg: Image):
-        try:
-            cv_image = self.bridge.imgmsg_to_cv2(msg, "bgr8")
-            with self.lock:
-                self.latest_image = cv_image.copy()
-        except CvBridgeError as e:
-            rospy.logerr("CvBridge错误: %s", e)
-    
+class USBCameraStream:
+    """USB摄像头流包装器，替换原本的ROS话题"""
+    def __init__(self, camera_index=0):
+        self.cap = cv2.VideoCapture(camera_index)
+        if not self.cap.isOpened():
+            rospy.logerr(f"无法打开USB摄像头 {camera_index}！")
+            
     def get_latest_image(self):
-        """获取最新图像"""
-        with self.lock:
-            return self.latest_image.copy() if self.latest_image is not None else None
+        if self.cap.isOpened():
+            ret, frame = self.cap.read()
+            if ret:
+                return frame
+        return None
+        
+    def stop(self):
+        if self.cap.isOpened():
+            self.cap.release()
 
 
 def initialize_arm_position():
-    """初始化机械臂到固定位置"""
-    rospy.loginfo("正在初始化机械臂到固定位置...")
+    """初始化机械臂到与 number_grasp_skill.py 完全一致的观测位置"""
+    rospy.loginfo("正在初始化机械臂到抓取观测位置...")
     
-    # 按顺序执行：j1 → j2 → j3 → j4 → j5 → j6 → j0 (gnd_set) → head_set
-    commands = [
-        ("j1_set.py", "-1.0"),
-        ("j2_set.py", "0.0"),
-        ("j3_set.py", "1.0"),
-        ("j4_set.py", "0.0"),
-        ("j5_set.py", "1.5"),
-        ("j6_set.py", "0.0"),
-        ("gnd_set.py", "1.5"),   # j0
-        ("head_set.py", "-1.5"),
-    ]
-    
-    for script_name, angle in commands:
-        cmd = ["rosrun", "arm_follow", script_name, "--angle", angle]
-        rospy.loginfo("执行: %s", " ".join(cmd))
-        try:
-            result = subprocess.run(cmd, timeout=15.0, capture_output=True, text=True)
-            if result.returncode != 0:
-                rospy.logwarn("命令执行失败: %s, 错误: %s", " ".join(cmd), result.stderr)
-            else:
-                rospy.loginfo("完成: %s", script_name)
-        except subprocess.TimeoutExpired:
-            rospy.logwarn("命令超时: %s", " ".join(cmd))
-        except Exception as e:
-            rospy.logerr("执行命令时出错: %s, 错误: %s", " ".join(cmd), str(e))
+    try:
+        limb = intera_interface.Limb("right")
+        head = intera_interface.Head()
         
-        rospy.sleep(0.5)  # 等待每个关节移动完成
-    
-    rospy.loginfo("机械臂初始化完成")
-    rospy.sleep(2.0)  # 等待机械臂完全到位
+        # 调低速度
+        limb.set_joint_position_speed(0.1)
+
+        # 步骤 1: 头部归正
+        rospy.loginfo("Step 1: Head Pan to 0.0")
+        head.set_pan(0.0)
+        rospy.sleep(1.5)
+        
+        current = limb.joint_angles()
+        
+        # 步骤 2: J0 归正
+        rospy.loginfo("Step 2: Joint 0 to 0.0")
+        current['right_j0'] = 0.0
+        limb.move_to_joint_positions(current)
+        rospy.sleep(0.5)
+        
+        # 步骤 3: J1 归正
+        rospy.loginfo("Step 3: Joint 1 to -0.5")
+        current['right_j1'] = -0.5
+        limb.move_to_joint_positions(current)
+        rospy.sleep(0.5)
+        
+        # 步骤 4: 剩余关节同时移动到观测姿态
+        rospy.loginfo("Step 4: Remaining joints to observation pose")
+        full_pose = {
+            'right_j0': 0.0,
+            'right_j1': -0.5,
+            'right_j2': 0.0,
+            'right_j3': 1.0,
+            'right_j4': 0.0,
+            'right_j5': 1.1,
+            'right_j6': -1.3
+        }
+        limb.move_to_joint_positions(full_pose)
+        rospy.sleep(0.5)
+        
+        rospy.loginfo("机械臂初始化完成")
+        rospy.sleep(2.0)  # 等待机械臂完全到位
+    except Exception as e:
+        rospy.logerr(f"初始化失败: {e}")
 
 
 def get_arm_endpoint_position():
@@ -205,11 +212,20 @@ def main():
     rospy.init_node("position_calibration", anonymous=False)
     
     # 获取参数
-    model_path = rospy.get_param("~model", "/home/mycar/YOLO/ultralytics-8.3.163/yolov8n_landmark.pt")
-    camera_topic = rospy.get_param("~camera_topic", "/io/internal_camera/head_camera/image_rect_color")
-    # 获取ROS包路径
     import rospkg
     rospack = rospkg.RosPack()
+    
+    # 修改默认模型路径，使用我们现在的数字识别模型
+    try:
+        openclaw_path = rospack.get_path('openclaw_sawyer')
+        default_model_path = os.path.join(openclaw_path, "weights", "best.pt")
+    except:
+        default_model_path = "/home/mycar/catkin_ws/src/openclaw_sawyer/weights/best.pt"
+        
+    model_path = rospy.get_param("~model", default_model_path)
+    camera_topic = rospy.get_param("~camera_topic", "/io/internal_camera/head_camera/image_rect_color")
+    
+    # 获取ROS包路径
     package_path = rospack.get_path('Position_Calibration')
     default_config_path = os.path.join(package_path, "config", "calibration.yaml")
     
@@ -230,35 +246,13 @@ def main():
         rospy.logerr("加载YOLO模型失败: %s", str(e))
         return
     
-    # 初始化摄像头
-    rospy.loginfo("初始化摄像头...")
-    cameras = intera_interface.Cameras()
-    camera_name = "head_camera"
-    
-    if not cameras.verify_camera_exists(camera_name):
-        rospy.logerr("头部摄像头 '%s' 未找到！", camera_name)
+    # 初始化 USB 摄像头
+    rospy.loginfo("初始化 USB 摄像头 (index 0)...")
+    image_stream = USBCameraStream(0)
+    if not image_stream.cap.isOpened():
+        rospy.logerr("USB 摄像头打开失败，退出标定。请检查 /dev/video0")
         return
-    
-    if not cameras.start_streaming(camera_name):
-        rospy.logerr("启动摄像头流失败！")
-        return
-    
-    rospy.loginfo("摄像头流已启动")
-    
-    # 设置自动曝光和增益
-    cameras.set_exposure(camera_name, -1)
-    cameras.set_gain(camera_name, -1)
-    
-    # 等待图像话题可用
-    rospy.loginfo("等待图像话题可用...")
-    try:
-        rospy.wait_for_message(camera_topic, Image, timeout=5.0)
-        rospy.loginfo("图像话题已可用")
-    except rospy.ROSException:
-        rospy.logwarn("无法从 %s 接收消息，继续尝试...", camera_topic)
-    
-    # 创建图像流
-    image_stream = ROSImageStream(camera_topic, timeout=30.0)
+    rospy.loginfo("USB 摄像头流已启动")
     
     # 初始化机械臂到固定位置
     initialize_arm_position()
@@ -449,9 +443,9 @@ def main():
         traceback.print_exc()
     finally:
         # 清理
-        rospy.loginfo("停止摄像头流...")
+        rospy.loginfo("停止USB摄像头流...")
         try:
-            cameras.stop_streaming(camera_name)
+            image_stream.stop()
         except:
             pass
         cv2.destroyAllWindows()
