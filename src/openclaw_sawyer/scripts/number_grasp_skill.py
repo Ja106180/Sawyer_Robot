@@ -23,8 +23,8 @@ CAMERA_INDEX = 0  # USB 摄像头设备号 (通常为 0 或 1，对应 /dev/vide
 # 根据您的最新反馈，完全真相大白了！
 # 您读到的 35cm 是 right_hand (末端法兰) 的高度，而夹爪长 16.5cm。
 # 目标：让夹爪尖端距离桌面 5cm。
-# 计算：当前尖端高度是 35 - 16.5 = 18.5cm。要降到 4cm (微调增加1cm)，必须下降 18.5 - 4 = 14.5cm。
-DESCEND_DISTANCE = 0.145   # 抓取时向下伸长的距离 (0.145m = 14.5cm)
+# 计算：当前尖端高度是 35 - 16.5 = 18.5cm。要降到 3cm (根据反馈再降1cm)，必须下降 18.5 - 3 = 15.5cm。
+DESCEND_DISTANCE = 0.155   # 抓取时向下伸长的距离 (0.155m = 15.5cm)
 LIFT_DISTANCE = 0.10       # 抓取完成后抬高的距离 (0.10m = 10cm)
 
 # 摄像头物理安装偏移补偿 (非常重要！)
@@ -301,6 +301,14 @@ class NumberGraspSkill:
                     cv2.imshow("YOLO Vision", frame)
                     cv2.waitKey(1)
                     
+                    # 允许用户点击 X 强行关闭窗口并退出程序 (专门解决关不掉的问题)
+                    try:
+                        if cv2.getWindowProperty("YOLO Vision", cv2.WND_PROP_VISIBLE) < 1:
+                            rospy.loginfo("User clicked X on window. Exiting...")
+                            break
+                    except:
+                        pass
+                    
             elif self.state == "SEARCHING":
                 # 推理图像
                 results = self.model(frame, verbose=False)
@@ -309,6 +317,13 @@ class NumberGraspSkill:
                 annotated_frame = results[0].plot()
                 cv2.imshow("YOLO Vision", annotated_frame)
                 cv2.waitKey(1)
+                
+                try:
+                    if cv2.getWindowProperty("YOLO Vision", cv2.WND_PROP_VISIBLE) < 1:
+                        rospy.loginfo("User clicked X on window. Exiting...")
+                        break
+                except:
+                    pass
                 
                 detections_dict = {} # 使用字典去重，保留置信度最高的
                 target_cx, target_cy = None, None
