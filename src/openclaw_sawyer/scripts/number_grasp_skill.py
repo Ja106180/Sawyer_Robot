@@ -17,9 +17,16 @@ from ultralytics import YOLO
 # ==========================================
 CAMERA_INDEX = 0  # USB 摄像头设备号 (通常为 0 或 1，对应 /dev/video0)
 
-# 高度配置 (绝对物理高度，参考 visual_grasping C++ 节点)
-OBSERVE_HEIGHT = 0.40     # 高位观测/平移高度 Z_high = 0.40m
-SAFE_GRASP_HEIGHT = 0.03  # 低位抓取高度 Z_low = 0.03m (贴近桌面)
+# 高度配置 (相对高度模式)
+# 因为每个人的桌子高度不同，我们回到最稳妥的相对下降模式
+DESCEND_DISTANCE = 0.04    # 抓取时向下伸长的距离 (0.04m = 4cm)
+
+# 摄像头物理安装偏移补偿 (非常重要！)
+# 您的摄像头是外挂在夹爪上的，这意味着当“画面”对准数字时，“夹爪”其实并没有对准！
+# 请测量摄像头中心到夹爪中心的实际物理距离，填入这里 (单位: 米)
+# 例如，如果摄像头在夹爪右侧 5 厘米处，可能需要设置 X 或 Y 偏移 0.05
+CAMERA_OFFSET_X = 0.0 
+CAMERA_OFFSET_Y = 0.0
 
 # 物理网格参数
 GRID_PHYSICAL_DIST = 0.07          # 相邻数字中心物理距离 7cm (0.07m)
@@ -163,10 +170,16 @@ class NumberGraspSkill:
             current_pose = self.limb.endpoint_pose()
             cx = current_pose['position'].x
             cy = current_pose['position'].y
+            cz = current_pose['position'].z
             ori = current_pose['orientation'] # This is a Quaternion
             
-            target_x = cx + offset_x
-            target_y = cy + offset_y
+            # 加入摄像头物理偏移量补偿
+            target_x = cx + offset_x + CAMERA_OFFSET_X
+            target_y = cy + offset_y + CAMERA_OFFSET_Y
+            
+            # 动态高度计算
+            observe_h = cz
+            safe_grasp_h = cz - DESCEND_DISTANCE
             
             # Helper to create Pose
             def create_pose(tx, ty, tz, orientation):
@@ -180,18 +193,18 @@ class NumberGraspSkill:
                 p.orientation.w = orientation.w
                 return p
             
-            # 移动步 1: 在绝对观测高度水平对准 (确保Z轴绝对水平)
-            rospy.loginfo(f"Move 1: Horizontal align at absolute OBSERVE_HEIGHT ({OBSERVE_HEIGHT}m)...")
-            pose1 = create_pose(target_x, target_y, OBSERVE_HEIGHT, ori)
+            # 移动步 1: 在观测高度水平对准
+            rospy.loginfo(f"Move 1: Horizontal align at Z = {observe_h:.3f}m...")
+            pose1 = create_pose(target_x, target_y, observe_h, ori)
             ik1 = self.limb.ik_request(pose1, "right_gripper_tip")
             if not ik1:
                 rospy.logerr("IK failed for horizontal align.")
                 return
             self.limb.move_to_joint_positions(ik1)
             
-            # 移动步 2: 垂直下降到绝对抓取高度
-            rospy.loginfo(f"Move 2: Descend to absolute SAFE_GRASP_HEIGHT ({SAFE_GRASP_HEIGHT}m)...")
-            pose2 = create_pose(target_x, target_y, SAFE_GRASP_HEIGHT, ori)
+            # 移动步 2: 垂直下降抓取
+            rospy.loginfo(f"Move 2: Descend to Z = {safe_grasp_h:.3f}m...")
+            pose2 = create_pose(target_x, target_y, safe_grasp_h, ori)
             ik2 = self.limb.ik_request(pose2, "right_gripper_tip")
             if not ik2:
                 rospy.logerr("IK failed for descend.")
