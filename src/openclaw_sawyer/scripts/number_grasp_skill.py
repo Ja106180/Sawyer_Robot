@@ -69,6 +69,9 @@ class NumberGraspSkill:
         """严格串行的安全初始化序列"""
         rospy.loginfo("Starting STRICT SAFE initialization sequence...")
         try:
+            # 调低速度，保证安全 (0.1 = 10% 速度)
+            self.limb.set_joint_position_speed(0.1)
+
             # 步骤 1: 头部归正
             rospy.loginfo("Step 1: Head Pan to 0.0")
             self.head.set_pan(0.0)
@@ -81,11 +84,13 @@ class NumberGraspSkill:
             rospy.loginfo("Step 2: Joint 0 to 0.0")
             current['right_j0'] = 0.0
             self.limb.move_to_joint_positions(current)
+            rospy.sleep(0.5)
             
             # 步骤 3: J1 归正
             rospy.loginfo("Step 3: Joint 1 to -0.5")
             current['right_j1'] = -0.5
             self.limb.move_to_joint_positions(current)
+            rospy.sleep(0.5)
             
             # 步骤 4: 剩余关节同时移动到观测姿态
             rospy.loginfo("Step 4: Remaining joints to observation pose")
@@ -99,6 +104,10 @@ class NumberGraspSkill:
                 'right_j6': -1.3
             }
             self.limb.move_to_joint_positions(full_pose)
+            rospy.sleep(0.5)
+            
+            # 恢复正常抓取速度 (可以根据需要调回 0.3 或保持 0.1)
+            self.limb.set_joint_position_speed(0.2)
             
             # 确保夹爪是松开的
             self.gripper.open()

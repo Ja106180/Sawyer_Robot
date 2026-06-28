@@ -296,17 +296,30 @@ window.onload = function () {
     bindMode('btn-point', pointSrv, "Point to Grasp");
 
     // Number Grasping Logic
+    var numGraspInterval = null;
     safeUI('btn-num-grasp', function(btn) {
         var active = false;
         btn.onclick = function() {
             active = !active;
             
             if (active) {
-                // Publish target number first
+                // Publish target number immediately and then periodically
                 var selectEl = document.getElementById('select-number');
                 var num = parseInt(selectEl.value);
                 targetNumTopic.publish(new ROSLIB.Message({ data: num }));
                 updateLog("Target number " + num + " sent.");
+                
+                // Keep publishing to ensure the python script gets it after YOLO finishes loading
+                if (numGraspInterval) clearInterval(numGraspInterval);
+                numGraspInterval = setInterval(function() {
+                    targetNumTopic.publish(new ROSLIB.Message({ data: num }));
+                }, 1000);
+                
+            } else {
+                if (numGraspInterval) {
+                    clearInterval(numGraspInterval);
+                    numGraspInterval = null;
+                }
             }
 
             // Then start/stop the service
