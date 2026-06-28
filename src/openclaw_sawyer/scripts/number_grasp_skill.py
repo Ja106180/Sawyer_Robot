@@ -24,17 +24,13 @@ CAMERA_INDEX = 0  # USB 摄像头设备号 (通常为 0 或 1，对应 /dev/vide
 # 您读到的 35cm 是 right_hand (末端法兰) 的高度，而夹爪长 16.5cm。
 # 目标：让夹爪尖端距离桌面 5cm。
 # 计算：当前尖端高度是 35 - 16.5 = 18.5cm。要降到 3cm (根据反馈再降1cm)，必须下降 18.5 - 3 = 15.5cm。
-DESCEND_DISTANCE = 0.155   # 抓取时向下伸长的距离 (0.155m = 15.5cm)
+DESCEND_DISTANCE = 0.170   # 抓取时向下伸长的距离 (0.170m = 17.0cm)
 LIFT_DISTANCE = 0.10       # 抓取完成后抬高的距离 (0.10m = 10cm)
 
 # 摄像头物理安装偏移补偿 (如果使用单应性矩阵 H，通常设为 0，因为标定已包含偏移)
-# 但如果标定后存在固定的整体平移误差（例如整体偏上/偏左一格），可以通过微调下面两个值来修正！
+# 如果标定后存在固定的整体平移误差（例如整体偏上/偏左一格），可以通过微调下面两个值来修正！
 GRASP_OFFSET_X = 0.0    # 抓取时的 X 方向微调 (例如 0.04 表示向前微调 4cm，-0.04 表示向后)
 GRASP_OFFSET_Y = 0.0    # 抓取时的 Y 方向微调 (例如 0.04 表示向左微调 4cm，-0.04 表示向右)
-
-# 以下是兼容旧模式的参数
-CAMERA_OFFSET_X = 0.0 
-CAMERA_OFFSET_Y = 0.0
 
 # 物理网格参数
 GRID_PHYSICAL_DIST = 0.07          # 相邻数字中心物理距离 7cm (0.07m)
@@ -151,40 +147,6 @@ class NumberGraspSkill:
             rospy.logerr(f"Initialization failed: {e}")
             return False
 
-    def calculate_ratio(self, detections):
-        """全数字动态平均自动标定"""
-        if len(detections) < 2:
-            return None
-            
-        ratios = []
-        # 两两配对，找出所有相邻的数字
-        for i in range(len(detections)):
-            for j in range(i+1, len(detections)):
-                n1 = detections[i]['num']
-                n2 = detections[j]['num']
-                
-                # 九宫格行列索引 (1-indexed: 1 到 9)
-                col1 = (n1 - 1) % 3
-                row1 = (n1 - 1) // 3
-                col2 = (n2 - 1) % 3
-                row2 = (n2 - 1) // 3
-                
-                # 判断是否是水平或垂直相邻 (曼哈顿距离为 1)
-                if abs(col1 - col2) + abs(row1 - row2) == 1:
-                    dx = detections[i]['cx'] - detections[j]['cx']
-                    dy = detections[i]['cy'] - detections[j]['cy']
-                    pixel_dist = math.sqrt(dx**2 + dy**2)
-                    
-                    if pixel_dist > 10: # 避免除以 0 或极小噪声
-                        ratio = GRID_PHYSICAL_DIST / pixel_dist
-                        ratios.append(ratio)
-        
-        if len(ratios) > 0:
-            # 过滤掉可能的极端异常值，取平均
-            avg_ratio = sum(ratios) / len(ratios)
-            return avg_ratio
-        return None
-
     def execute_grasp(self, target_cx, target_cy, w, h):
         rospy.loginfo(f"Executing grasp for pixel ({target_cx:.1f}, {target_cy:.1f})")
         try:
@@ -243,10 +205,6 @@ class NumberGraspSkill:
                 return
             self.limb.move_to_joint_positions(ik1)
             
-            # 对齐后等待 1 秒
-            rospy.loginfo("Waiting 1 second after horizontal align...")
-            rospy.sleep(1.0)
-            
             # 移动步 2: 垂直下降抓取 (速度放慢 5%)
             rospy.loginfo(f"Move 2: Descend to Z = {safe_grasp_h:.3f}m...")
             self.limb.set_joint_position_speed(0.15) # 下降速度减慢到 15%
@@ -257,17 +215,12 @@ class NumberGraspSkill:
                 return
             self.limb.move_to_joint_positions(ik2)
             
-            # 下降后等待 1 秒
-            rospy.loginfo("Waiting 1 second after descend...")
-            rospy.sleep(1.0)
+            # 下降后直接抓取 (无额外等待)
             
             # 动作 1: 闭合夹爪
-            rospy.loginfo("Action: Close gripper")
+            rospy.loginfo("Action: Close gripper (direct grasp)")
             self.gripper.close()
-            
-            # 闭合夹爪后等待 1 秒
-            rospy.loginfo("Waiting 1 second after closing gripper...")
-            rospy.sleep(1.0)
+            rospy.sleep(0.3) # 仅给物理机械爪0.3秒闭合时间
             
             # 移动步 3: 抬高 10cm
             rospy.loginfo(f"Move 3: Lift up by {LIFT_DISTANCE}m...")
@@ -280,14 +233,14 @@ class NumberGraspSkill:
             else:
                 self.limb.move_to_joint_positions(ik3)
             
-            # 等待 3 秒钟
+            # 上升等待 3 秒 (用户要求)
             rospy.loginfo("Waiting 3 seconds before release...")
             rospy.sleep(3.0)
             
             # 动作 2: 松开夹爪 (释放物体)
             rospy.loginfo("Action: Open gripper (Release)")
             self.gripper.open()
-            rospy.sleep(1.0)
+            rospy.sleep(0.5)
             
             rospy.loginfo("Grasp sequence complete. Returning to observation center.")
             
@@ -326,17 +279,36 @@ class NumberGraspSkill:
                 
             if self.state == "WAITING":
                 if self.target_number is not None:
-                    self.state = "SEARCHING"
+                    # 进入放物体的倒计时状态
+                    self.state = "COUNTDOWN"
+                    self.countdown_start = rospy.Time.now().to_sec()
                 else:
                     # 在等待状态时显示实时画面，表明正在等待
                     cv2.putText(frame, "WAITING FOR COMMAND...", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
                     cv2.imshow("YOLO Vision", frame)
                     cv2.waitKey(1)
                     
-                    # 允许用户点击 X 强行关闭窗口并退出程序 (专门解决关不掉的问题)
+                    # 允许用户点击 X 强行关闭窗口并退出程序
                     try:
                         if cv2.getWindowProperty("YOLO Vision", cv2.WND_PROP_VISIBLE) < 1:
                             rospy.loginfo("User clicked X on window. Exiting...")
+                            break
+                    except:
+                        pass
+                        
+            elif self.state == "COUNTDOWN":
+                # 显示倒计时，等待用户放物体 (等待3秒)
+                elapsed = rospy.Time.now().to_sec() - self.countdown_start
+                remain = 3.0 - elapsed
+                
+                if remain <= 0:
+                    self.state = "SEARCHING"
+                else:
+                    cv2.putText(frame, f"PLACE OBJECT! SEARCHING IN: {remain:.1f}s", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 165, 255), 2)
+                    cv2.imshow("YOLO Vision", frame)
+                    cv2.waitKey(1)
+                    try:
+                        if cv2.getWindowProperty("YOLO Vision", cv2.WND_PROP_VISIBLE) < 1:
                             break
                     except:
                         pass
@@ -384,17 +356,7 @@ class NumberGraspSkill:
                         target_cx, target_cy = det['cx'], det['cy']
                         break
                 
-                # 动态自动标定 (依然保留，用于在没有H矩阵时计算比例)
-                new_ratio = self.calculate_ratio(detections)
-                if new_ratio is not None:
-                    self.pixel_to_meter_ratio = new_ratio
-                    rospy.loginfo_throttle(1, f"Auto-calibrated Ratio: {self.pixel_to_meter_ratio:.6f} m/pixel")
-                
-                # 检查目标是否找到
-                # 如果有单应性矩阵 H，就不需要 pixel_to_meter_ratio 也能直接抓！
-                can_grasp = (self.H is not None) or (self.pixel_to_meter_ratio is not None)
-                
-                if target_cx is not None and can_grasp:
+                if target_cx is not None and self.H is not None:
                     h_img, w_img, _ = frame.shape
                     
                     rospy.loginfo(f"Target '{self.target_number}' found at ({target_cx:.1f}, {target_cy:.1f}). Initiating grasp...")
@@ -412,11 +374,6 @@ class NumberGraspSkill:
                     rospy.sleep(0.5)
                     self.target_number = None
                     self.state = "WAITING"
-            else:
-                    if target_cx is None:
-                        rospy.loginfo_throttle(2, f"Searching for target {self.target_number}...")
-                    else:
-                        rospy.loginfo_throttle(2, "Target found, but need at least 2 adjacent numbers to auto-calibrate first!")
                         
             rate.sleep()
             
