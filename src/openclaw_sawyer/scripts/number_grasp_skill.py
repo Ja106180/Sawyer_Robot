@@ -7,6 +7,7 @@ import numpy as np
 import intera_interface
 import os
 import math
+import rospkg
 from std_msgs.msg import Int32
 from ultralytics import YOLO
 
@@ -14,7 +15,6 @@ from ultralytics import YOLO
 # 核心配置参数 (Configuration)
 # ==========================================
 CAMERA_INDEX = 0  # USB 摄像头设备号 (通常为 0 或 1，对应 /dev/video0)
-WEIGHTS_PATH = "/userdata/sawyer/Sawyer_Robot/src/openclaw_sawyer/weights/best.pt"
 
 # 高度配置 (相对于机械臂基座)
 TABLE_Z = 0.75                     # 桌面高度 Z=0.75m
@@ -41,9 +41,12 @@ class NumberGraspSkill:
         rospy.Subscriber('/sawyer_target_number', Int32, self.target_callback)
         
         # 加载 YOLOv8 模型
-        rospy.loginfo(f"Loading YOLOv8 model from {WEIGHTS_PATH}...")
+        rospack = rospkg.RosPack()
+        weights_path = os.path.join(rospack.get_path('openclaw_sawyer'), 'weights', 'best.pt')
+        
+        rospy.loginfo(f"Loading YOLOv8 model from {weights_path}...")
         try:
-            self.model = YOLO(WEIGHTS_PATH)
+            self.model = YOLO(weights_path)
             rospy.loginfo("Model loaded successfully.")
         except Exception as e:
             rospy.logerr(f"Failed to load YOLO model: {e}")
