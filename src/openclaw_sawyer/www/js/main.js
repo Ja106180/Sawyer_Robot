@@ -66,10 +66,12 @@ window.onload = function () {
     var headTopic = new ROSLIB.Topic({ ros: ros, name: '/sawyer_head', messageType: 'sensor_msgs/JointState' });
     var gripperTopic = new ROSLIB.Topic({ ros: ros, name: '/sawyer_gripper', messageType: 'std_msgs/Bool' });
     var speedTopic = new ROSLIB.Topic({ ros: ros, name: '/sawyer_speed', messageType: 'std_msgs/Float32' });
+    var targetNumTopic = new ROSLIB.Topic({ ros: ros, name: '/sawyer_target_number', messageType: 'std_msgs/Int32' });
 
     var graspSrv = new ROSLIB.Service({ ros: ros, name: '/sawyer_grasp', serviceType: 'std_srvs/SetBool' });
     var followSrv = new ROSLIB.Service({ ros: ros, name: '/sawyer_follow', serviceType: 'std_srvs/SetBool' });
     var pointSrv = new ROSLIB.Service({ ros: ros, name: '/sawyer_point', serviceType: 'std_srvs/SetBool' });
+    var numGraspSrv = new ROSLIB.Service({ ros: ros, name: '/sawyer_number_grasp', serviceType: 'std_srvs/SetBool' });
     var stopSrv = new ROSLIB.Service({ ros: ros, name: '/sawyer_stop', serviceType: 'std_srvs/Trigger' });
     var headCamSrv = new ROSLIB.Service({ ros: ros, name: '/sawyer_head_cam', serviceType: 'std_srvs/SetBool' });
     var handCamSrv = new ROSLIB.Service({ ros: ros, name: '/sawyer_hand_cam', serviceType: 'std_srvs/SetBool' });
@@ -292,6 +294,35 @@ window.onload = function () {
     bindMode('btn-grasp', graspSrv, "Visual Grasping");
     bindMode('btn-follow', followSrv, "Arm Following");
     bindMode('btn-point', pointSrv, "Point to Grasp");
+
+    // Number Grasping Logic
+    safeUI('btn-num-grasp', function(btn) {
+        var active = false;
+        btn.onclick = function() {
+            active = !active;
+            
+            if (active) {
+                // Publish target number first
+                var selectEl = document.getElementById('select-number');
+                var num = parseInt(selectEl.value);
+                targetNumTopic.publish(new ROSLIB.Message({ data: num }));
+                updateLog("Target number " + num + " sent.");
+            }
+
+            // Then start/stop the service
+            numGraspSrv.callService(new ROSLIB.ServiceRequest({ data: active }), function(res) {
+                if(res.success) {
+                    btn.classList.toggle('active', active);
+                    if (active) {
+                        btn.innerHTML = '<span>⏹ 停止抓取</span>';
+                    } else {
+                        btn.innerHTML = '<span>🔢 启动数字抓取</span>';
+                    }
+                    updateLog(`Number Grasping ${active ? 'Started' : 'Stopped'}`);
+                }
+            });
+        };
+    });
 
     // 7. Camera Toggle Buttons
     function bindCam(btnId, srv, label) {

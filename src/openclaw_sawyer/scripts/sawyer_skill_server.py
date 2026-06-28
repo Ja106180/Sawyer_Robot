@@ -24,7 +24,8 @@ class SawyerSkillServer:
             "follow": None,
             "point": None,
             "record": None,
-            "playback": None
+            "playback": None,
+            "number_grasp": None
         }
         self.skill_active = False  # Pause control when skill process takes over
         self.teach_playback_active = False
@@ -35,7 +36,8 @@ class SawyerSkillServer:
         self.commands = {
             "grasp": ["roslaunch", "visual_grasping", "grasp.launch"],
             "follow": ["roslaunch", "arm_follow", "arm_follow.launch"],
-            "point": ["python3", os.path.join(rospack.get_path('openclaw_sawyer'), 'scripts', 'point_grasp_skill.py')]
+            "point": ["python3", os.path.join(rospack.get_path('openclaw_sawyer'), 'scripts', 'point_grasp_skill.py')],
+            "number_grasp": ["python3", os.path.join(rospack.get_path('openclaw_sawyer'), 'scripts', 'number_grasp_skill.py')]
         }
         
         # Sawyer interfaces
@@ -136,6 +138,7 @@ class SawyerSkillServer:
         rospy.Service("/sawyer_grasp", SetBool, self.handle_grasp_toggle)
         rospy.Service("/sawyer_follow", SetBool, self.handle_follow_toggle)
         rospy.Service("/sawyer_point", SetBool, self.handle_point_toggle)
+        rospy.Service("/sawyer_number_grasp", SetBool, self.handle_number_grasp_toggle)
         rospy.Service("/sawyer_trigger", Trigger, self.handle_trigger_grasp)
         rospy.Service("/sawyer_stop", Trigger, self.handle_stop)
         rospy.Service("/sawyer_head_cam", SetBool, self.handle_head_cam)
@@ -342,6 +345,9 @@ class SawyerSkillServer:
 
     def handle_point_toggle(self, req):
         return self._toggle_process("point", req.data)
+
+    def handle_number_grasp_toggle(self, req):
+        return self._toggle_process("number_grasp", req.data)
 
     def _toggle_process(self, name, active):
         if active:
