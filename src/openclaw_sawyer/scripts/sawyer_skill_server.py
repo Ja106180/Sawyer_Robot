@@ -22,7 +22,6 @@ class SawyerSkillServer:
         self.processes = {
             "grasp": None,
             "follow": None,
-            "point": None,
             "record": None,
             "playback": None,
             "number_grasp": None
@@ -36,7 +35,6 @@ class SawyerSkillServer:
         self.commands = {
             "grasp": ["roslaunch", "visual_grasping", "grasp.launch"],
             "follow": ["roslaunch", "arm_follow", "arm_follow.launch"],
-            "point": ["python3", os.path.join(rospack.get_path('openclaw_sawyer'), 'scripts', 'point_grasp_skill.py')],
             "number_grasp": ["python3", os.path.join(rospack.get_path('openclaw_sawyer'), 'scripts', 'number_grasp_skill.py')]
         }
         
@@ -137,7 +135,6 @@ class SawyerSkillServer:
         # Services
         rospy.Service("/sawyer_grasp", SetBool, self.handle_grasp_toggle)
         rospy.Service("/sawyer_follow", SetBool, self.handle_follow_toggle)
-        rospy.Service("/sawyer_point", SetBool, self.handle_point_toggle)
         rospy.Service("/sawyer_number_grasp", SetBool, self.handle_number_grasp_toggle)
         rospy.Service("/sawyer_trigger", Trigger, self.handle_trigger_grasp)
         rospy.Service("/sawyer_stop", Trigger, self.handle_stop)
@@ -342,9 +339,6 @@ class SawyerSkillServer:
 
     def handle_follow_toggle(self, req):
         return self._toggle_process("follow", req.data)
-
-    def handle_point_toggle(self, req):
-        return self._toggle_process("point", req.data)
 
     def handle_number_grasp_toggle(self, req):
         return self._toggle_process("number_grasp", req.data)
