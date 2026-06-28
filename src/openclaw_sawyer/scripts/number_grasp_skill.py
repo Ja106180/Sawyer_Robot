@@ -11,6 +11,8 @@ import rospkg
 from std_msgs.msg import Int32
 from geometry_msgs.msg import Pose, Point, Quaternion
 from ultralytics import YOLO
+import signal
+import sys
 
 # ==========================================
 # 核心配置参数 (Configuration)
@@ -18,8 +20,11 @@ from ultralytics import YOLO
 CAMERA_INDEX = 0  # USB 摄像头设备号 (通常为 0 或 1，对应 /dev/video0)
 
 # 高度配置 (相对高度模式)
-# 您的反馈：观测位置距离桌面大约 16cm (目前差12cm)，所以下降距离需要大幅加深！
-DESCEND_DISTANCE = 0.11    # 抓取时向下伸长的距离 (0.11m = 11cm)
+# 根据您的最新反馈，完全真相大白了！
+# 您读到的 35cm 是 right_hand (末端法兰) 的高度，而夹爪长 16.5cm。
+# 目标：让夹爪尖端距离桌面 5cm。
+# 计算：当前尖端高度是 35 - 16.5 = 18.5cm。要降到 5cm，必须下降 18.5 - 5 = 13.5cm。
+DESCEND_DISTANCE = 0.135   # 抓取时向下伸长的距离 (0.135m = 13.5cm)
 LIFT_DISTANCE = 0.10       # 抓取完成后抬高的距离 (0.10m = 10cm)
 
 # 摄像头物理安装偏移补偿 (非常重要！)
@@ -198,30 +203,42 @@ class NumberGraspSkill:
             # 移动步 1: 在观测高度水平对准
             rospy.loginfo(f"Move 1: Horizontal align at Z = {observe_h:.3f}m...")
             pose1 = create_pose(target_x, target_y, observe_h, ori)
-            ik1 = self.limb.ik_request(pose1, "right_gripper_tip")
+            # 致命修正：传入 right_hand，与 current_pose 的坐标系对齐！
+            ik1 = self.limb.ik_request(pose1, "right_hand")
             if not ik1:
                 rospy.logerr("IK failed for horizontal align.")
                 return
             self.limb.move_to_joint_positions(ik1)
             
+            # 对齐后等待 1 秒
+            rospy.loginfo("Waiting 1 second after horizontal align...")
+            rospy.sleep(1.0)
+            
             # 移动步 2: 垂直下降抓取
             rospy.loginfo(f"Move 2: Descend to Z = {safe_grasp_h:.3f}m...")
             pose2 = create_pose(target_x, target_y, safe_grasp_h, ori)
-            ik2 = self.limb.ik_request(pose2, "right_gripper_tip")
+            ik2 = self.limb.ik_request(pose2, "right_hand")
             if not ik2:
                 rospy.logerr("IK failed for descend.")
                 return
             self.limb.move_to_joint_positions(ik2)
             
+            # 下降后等待 1 秒
+            rospy.loginfo("Waiting 1 second after descend...")
+            rospy.sleep(1.0)
+            
             # 动作 1: 闭合夹爪
             rospy.loginfo("Action: Close gripper")
             self.gripper.close()
+            
+            # 闭合夹爪后等待 1 秒
+            rospy.loginfo("Waiting 1 second after closing gripper...")
             rospy.sleep(1.0)
             
             # 移动步 3: 抬高 10cm
             rospy.loginfo(f"Move 3: Lift up by {LIFT_DISTANCE}m...")
             pose3 = create_pose(target_x, target_y, lift_h, ori)
-            ik3 = self.limb.ik_request(pose3, "right_gripper_tip")
+            ik3 = self.limb.ik_request(pose3, "right_hand")
             if not ik3:
                 rospy.logwarn("IK failed for lift. Lifting to observe height instead.")
                 self.limb.move_to_joint_positions(ik1)
@@ -366,10 +383,25 @@ class NumberGraspSkill:
             self.cap.release()
         cv2.destroyAllWindows()
 
+# 全局变量以供信号处理器使用
+skill_node = None
+
+def cleanup_handler(sig, frame):
+    """处理 SIGTERM 信号 (网页端停止时发送) 和 SIGINT 信号 (Ctrl+C)"""
+    rospy.loginfo("Received termination signal. Cleaning up...")
+    if skill_node is not None and hasattr(skill_node, 'cap') and skill_node.cap.isOpened():
+        skill_node.cap.release()
+    cv2.destroyAllWindows()
+    sys.exit(0)
+
 if __name__ == "__main__":
+    # 注册系统信号，确保不论是被键盘 Ctrl+C 还是被网页端强制杀死，都能关闭视觉窗口
+    signal.signal(signal.SIGINT, cleanup_handler)
+    signal.signal(signal.SIGTERM, cleanup_handler)
+    
     try:
-        skill = NumberGraspSkill()
+        skill_node = NumberGraspSkill()
     except rospy.ROSInterruptException:
         pass 
     finally:
-        cv2.destroyAllWindows()
+        cleanup_handler(None, None)
