@@ -8,6 +8,10 @@ import rospkg
 import signal
 import json
 import threading
+import socket
+import time
+import cv2
+from cv_bridge import CvBridge
 from std_srvs.srv import SetBool, SetBoolResponse, Trigger, TriggerResponse
 from std_msgs.msg import Bool, Float32, String
 from sensor_msgs.msg import JointState, Image
@@ -142,6 +146,11 @@ class SawyerSkillServer:
         rospy.Service("/sawyer_hand_cam", SetBool, self.handle_hand_cam)
         rospy.Service("/sawyer_reset", Trigger, self.handle_reset)
         
+        # Hermes integration services
+        rospy.Service("/sawyer_skill_server/move_relative", String, self.handle_move_relative)
+        rospy.Service("/sawyer_skill_server/capture_head_cam", Trigger, self.handle_capture_head_cam)
+        rospy.Service("/sawyer_skill_server/capture_hand_cam", Trigger, self.handle_capture_hand_cam)
+        
         # OpenClaw alias services
         rospy.Service("/sawyer_skill_server/set_grasp_mode", SetBool, self.handle_grasp_toggle)
         rospy.Service("/sawyer_skill_server/set_follow_mode", SetBool, self.handle_follow_toggle)
@@ -163,6 +172,10 @@ class SawyerSkillServer:
         # Timers - 100Hz control loop (matching visual.cpp)
         rospy.Timer(rospy.Duration(0.1), self.sync_state)
         rospy.Timer(rospy.Duration(0.01), self.control_loop)
+
+        # Start UDP Discovery Beacon
+        self.beacon_thread = threading.Thread(target=self.run_udp_beacon, daemon=True)
+        self.beacon_thread.start()
 
         rospy.loginfo("Sawyer Skill Server with spring-damper control ready.")
 
@@ -656,7 +669,106 @@ class SawyerSkillServer:
         except Exception as e:
             pass
 
+    # =========================================================================
+    # Hermes Integration Methods
+    # =========================================================================
+    def run_udp_beacon(self):
+        """Continuously broadcast the device's identity over UDP for Hermes discovery."""
+        port = 12345
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        
+        # Get machine IP
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(('10.255.255.255', 1))
+            my_ip = s.getsockname()[0]
+            s.close()
+        except:
+            my_ip = '127.0.0.1'
 
+        payload = {
+            "device_id": "sawyer_01",
+            "device_type": "arm",
+            "ip": my_ip,
+            "port": 9090,
+            "capabilities": ["joints", "gripper", "vision", "number_grasp", "follow", "relative_move"]
+        }
+        message = json.dumps(payload).encode('utf-8')
+        
+        while not rospy.is_shutdown():
+            try:
+                sock.sendto(message, ('<broadcast>', port))
+            except: pass
+            time.sleep(2.0)
+        sock.close()
+
+    def handle_move_relative(self, req):
+        """Handle relative movement commands from Hermes (e.g. rotate left by 0.2 rad)."""
+        try:
+            deltas = json.loads(req.data)
+            
+            # Start controlling
+            self.skill_active = False
+            self.teach_playback_active = False
+            if self.limb:
+                try:
+                    self.limb.exit_control_mode()
+                except: pass
+                
+            # Apply deltas to body joints
+            for joint, delta in deltas.items():
+                if joint in self.current_joints:
+                    self.target_joints[joint] = self.current_joints[joint] + delta
+            
+            # Apply delta to head if requested
+            if "head_pan" in deltas:
+                self.target_head_pan = self.current_head_pan + deltas["head_pan"]
+                self.head_controlled = True
+                
+            return SetBoolResponse(success=True, message="Relative movement applied.")
+        except Exception as e:
+            return SetBoolResponse(success=False, message=str(e))
+
+    def handle_capture_head_cam(self, req):
+        """Capture an image from the head camera."""
+        try:
+            msg = rospy.wait_for_message("/io/internal_camera/head_camera/image_rect_color", Image, timeout=3.0)
+            bridge = CvBridge()
+            cv_image = bridge.imgmsg_to_cv2(msg, "bgr8")
+            
+            save_path = "/tmp/sawyer_head.jpg"
+            cv2.imwrite(save_path, cv_image)
+            
+            result = {
+                "success": True,
+                "image_path": save_path,
+                "description": "Head camera snapshot captured."
+            }
+            return TriggerResponse(success=True, message=json.dumps(result))
+        except Exception as e:
+            return TriggerResponse(success=False, message=json.dumps({"error": str(e)}))
+
+    def handle_capture_hand_cam(self, req):
+        """Capture an image from the USB hand camera."""
+        try:
+            cap = cv2.VideoCapture("/dev/video0", cv2.CAP_V4L2)
+            ret, frame = cap.read()
+            cap.release()
+            
+            if ret:
+                save_path = "/tmp/sawyer_hand.jpg"
+                cv2.imwrite(save_path, frame)
+                result = {
+                    "success": True,
+                    "image_path": save_path,
+                    "description": "Hand USB camera snapshot captured."
+                }
+                return TriggerResponse(success=True, message=json.dumps(result))
+            else:
+                return TriggerResponse(success=False, message=json.dumps({"error": "Failed to grab frame from /dev/video0"}))
+        except Exception as e:
+            return TriggerResponse(success=False, message=json.dumps({"error": str(e)}))
 
 import signal
 import os
