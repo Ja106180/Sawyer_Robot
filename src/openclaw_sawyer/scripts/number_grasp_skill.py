@@ -18,8 +18,9 @@ from ultralytics import YOLO
 CAMERA_INDEX = 0  # USB 摄像头设备号 (通常为 0 或 1，对应 /dev/video0)
 
 # 高度配置 (相对高度模式)
-# 因为每个人的桌子高度不同，我们回到最稳妥的相对下降模式
-DESCEND_DISTANCE = 0.04    # 抓取时向下伸长的距离 (0.04m = 4cm)
+# 您的反馈：观测位置距离桌面大约 16cm (目前差12cm)，所以下降距离需要大幅加深！
+DESCEND_DISTANCE = 0.11    # 抓取时向下伸长的距离 (0.11m = 11cm)
+LIFT_DISTANCE = 0.10       # 抓取完成后抬高的距离 (0.10m = 10cm)
 
 # 摄像头物理安装偏移补偿 (非常重要！)
 # 您的摄像头是外挂在夹爪上的，这意味着当“画面”对准数字时，“夹爪”其实并没有对准！
@@ -180,6 +181,7 @@ class NumberGraspSkill:
             # 动态高度计算
             observe_h = cz
             safe_grasp_h = cz - DESCEND_DISTANCE
+            lift_h = safe_grasp_h + LIFT_DISTANCE
             
             # Helper to create Pose
             def create_pose(tx, ty, tz, orientation):
@@ -216,9 +218,15 @@ class NumberGraspSkill:
             self.gripper.close()
             rospy.sleep(1.0)
             
-            # 移动步 3: 抬起到最初的观测高度
-            rospy.loginfo("Move 3: Lift up to OBSERVE_HEIGHT...")
-            self.limb.move_to_joint_positions(ik1)
+            # 移动步 3: 抬高 10cm
+            rospy.loginfo(f"Move 3: Lift up by {LIFT_DISTANCE}m...")
+            pose3 = create_pose(target_x, target_y, lift_h, ori)
+            ik3 = self.limb.ik_request(pose3, "right_gripper_tip")
+            if not ik3:
+                rospy.logwarn("IK failed for lift. Lifting to observe height instead.")
+                self.limb.move_to_joint_positions(ik1)
+            else:
+                self.limb.move_to_joint_positions(ik3)
             
             # 等待 3 秒钟
             rospy.loginfo("Waiting 3 seconds before release...")
@@ -267,6 +275,11 @@ class NumberGraspSkill:
             if self.state == "WAITING":
                 if self.target_number is not None:
                     self.state = "SEARCHING"
+                else:
+                    # 在等待状态时显示实时画面，表明正在等待
+                    cv2.putText(frame, "WAITING FOR COMMAND...", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                    cv2.imshow("YOLO Vision", frame)
+                    cv2.waitKey(1)
                     
             elif self.state == "SEARCHING":
                 # 推理图像
@@ -327,6 +340,11 @@ class NumberGraspSkill:
                     
                     rospy.loginfo(f"Target '{self.target_number}' found at ({target_cx:.1f}, {target_cy:.1f}). Initiating grasp...")
                     
+                    # 明确在画面上显示已锁定，暂停识别
+                    cv2.putText(annotated_frame, "TARGET LOCKED - VISION PAUSED", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                    cv2.imshow("YOLO Vision", annotated_frame)
+                    cv2.waitKey(1)
+                    
                     self.execute_grasp(offset_x, offset_y)
                     
                     # 抓取完成后清空摄像头缓冲，等待下一个指令循环
@@ -343,11 +361,15 @@ class NumberGraspSkill:
                         
             rate.sleep()
             
-        # 退出时释放摄像头资源
-        self.cap.release()
+        # 退出时释放摄像头资源和关闭窗口
+        if hasattr(self, 'cap') and self.cap.isOpened():
+            self.cap.release()
+        cv2.destroyAllWindows()
 
 if __name__ == "__main__":
     try:
         skill = NumberGraspSkill()
     except rospy.ROSInterruptException:
-        pass
+        pass 
+    finally:
+        cv2.destroyAllWindows()
