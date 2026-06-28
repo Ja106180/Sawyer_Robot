@@ -113,6 +113,11 @@ class NumberGraspSkill:
             # 确保夹爪是松开的
             self.gripper.open()
             
+            # 清理摄像头积压的旧缓存帧，避免识别到移动过程中的残影
+            if hasattr(self, 'cap') and self.cap.isOpened():
+                for _ in range(10):
+                    self.cap.grab()
+                    
             rospy.loginfo("Initialization complete. Arm is in observation pose.")
             return True
         except Exception as e:
@@ -148,6 +153,7 @@ class NumberGraspSkill:
                         ratios.append(ratio)
         
         if len(ratios) > 0:
+            # 过滤掉可能的极端异常值，取平均
             avg_ratio = sum(ratios) / len(ratios)
             return avg_ratio
         return None
@@ -158,10 +164,15 @@ class NumberGraspSkill:
             current_pose = self.limb.endpoint_pose()
             cx = current_pose['position'].x
             cy = current_pose['position'].y
+            cz = current_pose['position'].z
             ori = current_pose['orientation'] # This is a Quaternion
             
             target_x = cx + offset_x
             target_y = cy + offset_y
+            
+            # 动态计算高度：基于当前真实的观测高度
+            observe_h = cz
+            safe_grasp_h = cz - 0.04 # 下降4cm (9cm观测 -> 5cm抓取)
             
             # Helper to create Pose
             def create_pose(tx, ty, tz, orientation):
@@ -177,7 +188,7 @@ class NumberGraspSkill:
             
             # 移动步 1: 在 9cm 高度水平对准
             rospy.loginfo("Move 1: Horizontal align at OBSERVE_HEIGHT...")
-            pose1 = create_pose(target_x, target_y, OBSERVE_HEIGHT, ori)
+            pose1 = create_pose(target_x, target_y, observe_h, ori)
             ik1 = self.limb.ik_request(pose1, "right_gripper_tip")
             if not ik1:
                 rospy.logerr("IK failed for horizontal align.")
@@ -186,7 +197,7 @@ class NumberGraspSkill:
             
             # 移动步 2: 垂直下降到 5cm
             rospy.loginfo("Move 2: Descend to SAFE_GRASP_HEIGHT...")
-            pose2 = create_pose(target_x, target_y, SAFE_GRASP_HEIGHT, ori)
+            pose2 = create_pose(target_x, target_y, safe_grasp_h, ori)
             ik2 = self.limb.ik_request(pose2, "right_gripper_tip")
             if not ik2:
                 rospy.logerr("IK failed for descend.")
@@ -243,7 +254,7 @@ class NumberGraspSkill:
                 cv2.imshow("YOLO Vision", annotated_frame)
                 cv2.waitKey(1)
                 
-                detections = []
+                detections_dict = {} # 使用字典去重，保留置信度最高的
                 target_cx, target_cy = None, None
                 
                 # 解析 YOLO 结果
@@ -252,15 +263,23 @@ class NumberGraspSkill:
                     for box in boxes:
                         cls_id = int(box.cls[0])
                         num = cls_id + 1 # YOLO index 0 是数字 1
+                        conf = float(box.conf[0])
                         
                         x1, y1, x2, y2 = box.xyxy[0]
                         cx = float((x1 + x2) / 2)
                         cy = float((y1 + y2) / 2)
                         
-                        detections.append({'num': num, 'cx': cx, 'cy': cy})
-                        
-                        if num == self.target_number:
-                            target_cx, target_cy = cx, cy
+                        # 去重逻辑：如果同一个数字被识别出多次，保留置信度最高的框
+                        if num not in detections_dict or conf > detections_dict[num]['conf']:
+                            detections_dict[num] = {'num': num, 'cx': cx, 'cy': cy, 'conf': conf}
+                
+                detections = list(detections_dict.values())
+                
+                # 寻找目标数字
+                for det in detections:
+                    if det['num'] == self.target_number:
+                        target_cx, target_cy = det['cx'], det['cy']
+                        break
                 
                 # 执行动态自动标定
                 new_ratio = self.calculate_ratio(detections)
@@ -287,7 +306,10 @@ class NumberGraspSkill:
                     
                     self.execute_grasp(offset_x, offset_y)
                     
-                    # 抓取完成后重置状态，等待下一次指令
+                    # 抓取完成后清空摄像头缓冲，等待下一个指令循环
+                    for _ in range(10):
+                        self.cap.grab()
+                    rospy.sleep(0.5)
                     self.target_number = None
                     self.state = "WAITING"
                 else:
