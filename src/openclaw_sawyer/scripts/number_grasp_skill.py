@@ -27,10 +27,12 @@ CAMERA_INDEX = 0  # USB 摄像头设备号 (通常为 0 或 1，对应 /dev/vide
 DESCEND_DISTANCE = 0.155   # 抓取时向下伸长的距离 (0.155m = 15.5cm)
 LIFT_DISTANCE = 0.10       # 抓取完成后抬高的距离 (0.10m = 10cm)
 
-# 摄像头物理安装偏移补偿 (非常重要！)
-# 您的摄像头是外挂在夹爪上的，这意味着当“画面”对准数字时，“夹爪”其实并没有对准！
-# 请测量摄像头中心到夹爪中心的实际物理距离，填入这里 (单位: 米)
-# 例如，如果摄像头在夹爪右侧 5 厘米处，可能需要设置 X 或 Y 偏移 0.05
+# 摄像头物理安装偏移补偿 (如果使用单应性矩阵 H，通常设为 0，因为标定已包含偏移)
+# 但如果标定后存在固定的整体平移误差（例如整体偏上/偏左一格），可以通过微调下面两个值来修正！
+GRASP_OFFSET_X = 0.0    # 抓取时的 X 方向微调 (例如 0.04 表示向前微调 4cm，-0.04 表示向后)
+GRASP_OFFSET_Y = 0.0    # 抓取时的 Y 方向微调 (例如 0.04 表示向左微调 4cm，-0.04 表示向右)
+
+# 以下是兼容旧模式的参数
 CAMERA_OFFSET_X = 0.0 
 CAMERA_OFFSET_Y = 0.0
 
@@ -196,8 +198,10 @@ class NumberGraspSkill:
                 rospy.loginfo("Using Homography matrix for precise absolute Cartesian mapping!")
                 pixel_pt = np.array([target_cx, target_cy, 1.0])
                 arm_pt = self.H @ pixel_pt
-                target_x = arm_pt[0] / arm_pt[2]
-                target_y = arm_pt[1] / arm_pt[2]
+                
+                # 加上全局微调偏移量 (解决固定偏移一格的问题)
+                target_x = (arm_pt[0] / arm_pt[2]) + GRASP_OFFSET_X
+                target_y = (arm_pt[1] / arm_pt[2]) + GRASP_OFFSET_Y
             else:
                 # 兼容模式：如果没有标定文件，则退回到旧的比例计算法
                 rospy.logwarn("Homography matrix missing! Falling back to linear ratio math.")
