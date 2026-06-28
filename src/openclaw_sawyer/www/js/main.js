@@ -295,45 +295,50 @@ window.onload = function () {
     bindMode('btn-follow', followSrv, "Arm Following");
     bindMode('btn-point', pointSrv, "Point to Grasp");
 
-    // Number Grasping Logic
-    var numGraspInterval = null;
-    safeUI('btn-num-grasp', function(btn) {
+    // Number Grasping Logic - Redesigned
+    // Button 1: Toggle Backend Process
+    safeUI('btn-num-grasp-process', function(btn) {
         var active = false;
         btn.onclick = function() {
             active = !active;
             
-            if (active) {
-                // Publish target number immediately and then periodically
-                var selectEl = document.getElementById('select-number');
-                var num = parseInt(selectEl.value);
-                targetNumTopic.publish(new ROSLIB.Message({ data: num }));
-                updateLog("Target number " + num + " sent.");
-                
-                // Keep publishing to ensure the python script gets it after YOLO finishes loading
-                if (numGraspInterval) clearInterval(numGraspInterval);
-                numGraspInterval = setInterval(function() {
-                    targetNumTopic.publish(new ROSLIB.Message({ data: num }));
-                }, 1000);
-                
-            } else {
-                if (numGraspInterval) {
-                    clearInterval(numGraspInterval);
-                    numGraspInterval = null;
-                }
-            }
-
-            // Then start/stop the service
             numGraspSrv.callService(new ROSLIB.ServiceRequest({ data: active }), function(res) {
                 if(res.success) {
                     btn.classList.toggle('active', active);
                     if (active) {
-                        btn.innerHTML = '<span>⏹ 停止抓取</span>';
+                        btn.innerHTML = '<span>⏹ 停止并关闭服务</span>';
+                        btn.style.borderColor = 'var(--danger)';
+                        btn.style.color = 'var(--danger)';
+                        updateLog("Number Grasp Backend Started. Waiting for arm initialization...");
                     } else {
-                        btn.innerHTML = '<span>🔢 启动数字抓取</span>';
+                        btn.innerHTML = '<span>⚙️ 1. 启动数字抓取后台服务</span>';
+                        btn.style.borderColor = 'rgba(255, 255, 255, 0.2)';
+                        btn.style.color = 'var(--text-primary)';
+                        updateLog("Number Grasp Backend Stopped.");
                     }
-                    updateLog(`Number Grasping ${active ? 'Started' : 'Stopped'}`);
                 }
             });
+        };
+    });
+
+    // Button 2: Send Command Once
+    safeUI('btn-send-number', function(btn) {
+        btn.onclick = function() {
+            var selectEl = document.getElementById('select-number');
+            var num = parseInt(selectEl.value);
+            
+            // Publish target number ONCE
+            targetNumTopic.publish(new ROSLIB.Message({ data: num }));
+            updateLog(`Target number [${num}] sent! Arm should move now.`);
+            
+            // Flash button green briefly
+            var originalColor = btn.style.borderColor;
+            btn.style.borderColor = 'var(--success)';
+            btn.style.color = 'var(--success)';
+            setTimeout(function() {
+                btn.style.borderColor = originalColor;
+                btn.style.color = 'var(--text-primary)';
+            }, 1000);
         };
     });
 

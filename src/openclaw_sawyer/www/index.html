@@ -42,7 +42,13 @@
         </div>
 
         <div class="nav-section">
-            <div class="section-title">数字盘抓取 (Number Grasp)</div>
+            <div class="section-title">数字盘视觉抓取</div>
+            <!-- 第一步：启动后台服务 (这会进行初始化) -->
+            <button id="btn-num-grasp-process" class="mode-card" style="width: 100%; margin-bottom: 10px;">
+                <span>⚙️ 1. 启动数字抓取后台服务</span>
+            </button>
+            
+            <!-- 第二步：发送数字指令 (可反复执行) -->
             <div style="display: flex; gap: 10px; margin-bottom: 5px;">
                 <select id="select-number" class="mode-card" style="flex: 1; padding: 10px; font-size: 16px; background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); border-radius: 8px;">
                     <option value="1">数字 1</option>
@@ -55,8 +61,8 @@
                     <option value="8">数字 8</option>
                     <option value="9">数字 9</option>
                 </select>
-                <button id="btn-num-grasp" class="mode-card" style="flex: 2; border-color: var(--primary);">
-                    <span>🔢 启动数字抓取</span>
+                <button id="btn-send-number" class="mode-card" style="flex: 2; border-color: var(--primary);">
+                    <span>🎯 2. 发送目标进行抓取</span>
                 </button>
             </div>
         </div>

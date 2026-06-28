@@ -17,10 +17,9 @@ from ultralytics import YOLO
 # ==========================================
 CAMERA_INDEX = 0  # USB 摄像头设备号 (通常为 0 或 1，对应 /dev/video0)
 
-# 高度配置 (相对于机械臂基座)
-TABLE_Z = 0.75                     # 桌面高度 Z=0.75m
-OBSERVE_HEIGHT = TABLE_Z + 0.09    # 观测高度 Z=0.84m (距离桌面 9cm)
-SAFE_GRASP_HEIGHT = TABLE_Z + 0.05 # 抓取高度 Z=0.80m (距离桌面 5cm)
+# 高度配置 (绝对物理高度，参考 visual_grasping C++ 节点)
+OBSERVE_HEIGHT = 0.40     # 高位观测/平移高度 Z_high = 0.40m
+SAFE_GRASP_HEIGHT = 0.03  # 低位抓取高度 Z_low = 0.03m (贴近桌面)
 
 # 物理网格参数
 GRID_PHYSICAL_DIST = 0.07          # 相邻数字中心物理距离 7cm (0.07m)
@@ -164,15 +163,10 @@ class NumberGraspSkill:
             current_pose = self.limb.endpoint_pose()
             cx = current_pose['position'].x
             cy = current_pose['position'].y
-            cz = current_pose['position'].z
             ori = current_pose['orientation'] # This is a Quaternion
             
             target_x = cx + offset_x
             target_y = cy + offset_y
-            
-            # 动态计算高度：基于当前真实的观测高度
-            observe_h = cz
-            safe_grasp_h = cz - 0.04 # 下降4cm (9cm观测 -> 5cm抓取)
             
             # Helper to create Pose
             def create_pose(tx, ty, tz, orientation):
@@ -186,18 +180,18 @@ class NumberGraspSkill:
                 p.orientation.w = orientation.w
                 return p
             
-            # 移动步 1: 在 9cm 高度水平对准
-            rospy.loginfo("Move 1: Horizontal align at OBSERVE_HEIGHT...")
-            pose1 = create_pose(target_x, target_y, observe_h, ori)
+            # 移动步 1: 在绝对观测高度水平对准 (确保Z轴绝对水平)
+            rospy.loginfo(f"Move 1: Horizontal align at absolute OBSERVE_HEIGHT ({OBSERVE_HEIGHT}m)...")
+            pose1 = create_pose(target_x, target_y, OBSERVE_HEIGHT, ori)
             ik1 = self.limb.ik_request(pose1, "right_gripper_tip")
             if not ik1:
                 rospy.logerr("IK failed for horizontal align.")
                 return
             self.limb.move_to_joint_positions(ik1)
             
-            # 移动步 2: 垂直下降到 5cm
-            rospy.loginfo("Move 2: Descend to SAFE_GRASP_HEIGHT...")
-            pose2 = create_pose(target_x, target_y, safe_grasp_h, ori)
+            # 移动步 2: 垂直下降到绝对抓取高度
+            rospy.loginfo(f"Move 2: Descend to absolute SAFE_GRASP_HEIGHT ({SAFE_GRASP_HEIGHT}m)...")
+            pose2 = create_pose(target_x, target_y, SAFE_GRASP_HEIGHT, ori)
             ik2 = self.limb.ik_request(pose2, "right_gripper_tip")
             if not ik2:
                 rospy.logerr("IK failed for descend.")
@@ -209,9 +203,13 @@ class NumberGraspSkill:
             self.gripper.close()
             rospy.sleep(1.0)
             
-            # 移动步 3: 抬起到 9cm
+            # 移动步 3: 抬起到最初的观测高度
             rospy.loginfo("Move 3: Lift up to OBSERVE_HEIGHT...")
             self.limb.move_to_joint_positions(ik1)
+            
+            # 等待 3 秒钟
+            rospy.loginfo("Waiting 3 seconds before release...")
+            rospy.sleep(3.0)
             
             # 动作 2: 松开夹爪 (释放物体)
             rospy.loginfo("Action: Open gripper (Release)")
@@ -219,12 +217,24 @@ class NumberGraspSkill:
             rospy.sleep(1.0)
             
             rospy.loginfo("Grasp sequence complete. Returning to observation center.")
-            # 可选：抓完后回到中心观察点
-            self.perform_init_sequence()
+            
+            # 返回正中心的观测点 (不需要重头进行全套初始化，直接关节归位即可)
+            full_pose = {
+                'right_j0': 0.0,
+                'right_j1': -0.5,
+                'right_j2': 0.0,
+                'right_j3': 1.0,
+                'right_j4': 0.0,
+                'right_j5': 1.1,
+                'right_j6': -1.3
+            }
+            self.limb.move_to_joint_positions(full_pose)
+            rospy.sleep(0.5)
             
         except Exception as e:
             rospy.logerr(f"Grasp execution failed: {e}")
-            self.perform_init_sequence() # 发生异常则复位恢复安全姿态
+            # 发生异常则彻底复位恢复安全姿态
+            self.perform_init_sequence()
 
     def run(self):
         # 启动时执行严格安全初始化
