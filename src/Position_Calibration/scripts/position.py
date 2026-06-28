@@ -300,15 +300,25 @@ def main():
             # 解析检测结果
             detected = False
             if len(results) > 0 and len(results[0].boxes) > 0:
-                # 获取第一个检测框（置信度最高的）
-                box = results[0].boxes.xyxy[0].cpu().numpy()  # [x1, y1, x2, y2]
-                conf = results[0].boxes.conf[0].cpu().numpy()
+                # 我们必须明确追踪某一个特定的数字（例如数字 5，YOLO类别索引为 4）
+                # 这样即使画面里有9个数字，它也只会死死盯住数字5作为标定参照物！
+                target_cls = 4  # 对应数字 5
                 
-                if conf >= conf_threshold:
-                    current_box = box
+                best_box = None
+                best_conf = 0.0
+                
+                for idx, cls_tensor in enumerate(results[0].boxes.cls):
+                    if int(cls_tensor.item()) == target_cls:
+                        conf = results[0].boxes.conf[idx].cpu().numpy()
+                        if conf >= conf_threshold and conf > best_conf:
+                            best_conf = conf
+                            best_box = results[0].boxes.xyxy[idx].cpu().numpy()
+                            
+                if best_box is not None:
+                    current_box = best_box
                     # 计算中心点
-                    center_x = (box[0] + box[2]) / 2
-                    center_y = (box[1] + box[3]) / 2
+                    center_x = (best_box[0] + best_box[2]) / 2
+                    center_y = (best_box[1] + best_box[3]) / 2
                     current_center = (center_x, center_y)
                     detected = True
                     # 只有在未确认状态下，检测到新物体才需要重新确认
