@@ -23,8 +23,8 @@ CAMERA_INDEX = 0  # USB 摄像头设备号 (通常为 0 或 1，对应 /dev/vide
 # 根据您的最新反馈，完全真相大白了！
 # 您读到的 35cm 是 right_hand (末端法兰) 的高度，而夹爪长 16.5cm。
 # 目标：让夹爪尖端距离桌面 5cm。
-# 计算：当前尖端高度是 35 - 16.5 = 18.5cm。要降到 5cm，必须下降 18.5 - 5 = 13.5cm。
-DESCEND_DISTANCE = 0.135   # 抓取时向下伸长的距离 (0.135m = 13.5cm)
+# 计算：当前尖端高度是 35 - 16.5 = 18.5cm。要降到 4cm (微调增加1cm)，必须下降 18.5 - 4 = 14.5cm。
+DESCEND_DISTANCE = 0.145   # 抓取时向下伸长的距离 (0.145m = 14.5cm)
 LIFT_DISTANCE = 0.10       # 抓取完成后抬高的距离 (0.10m = 10cm)
 
 # 摄像头物理安装偏移补偿 (非常重要！)
@@ -202,6 +202,7 @@ class NumberGraspSkill:
             
             # 移动步 1: 在观测高度水平对准
             rospy.loginfo(f"Move 1: Horizontal align at Z = {observe_h:.3f}m...")
+            self.limb.set_joint_position_speed(0.2) # 恢复正常速度 20%
             pose1 = create_pose(target_x, target_y, observe_h, ori)
             # 致命修正：传入 right_hand，与 current_pose 的坐标系对齐！
             ik1 = self.limb.ik_request(pose1, "right_hand")
@@ -214,8 +215,9 @@ class NumberGraspSkill:
             rospy.loginfo("Waiting 1 second after horizontal align...")
             rospy.sleep(1.0)
             
-            # 移动步 2: 垂直下降抓取
+            # 移动步 2: 垂直下降抓取 (速度放慢 5%)
             rospy.loginfo(f"Move 2: Descend to Z = {safe_grasp_h:.3f}m...")
+            self.limb.set_joint_position_speed(0.15) # 下降速度减慢到 15%
             pose2 = create_pose(target_x, target_y, safe_grasp_h, ori)
             ik2 = self.limb.ik_request(pose2, "right_hand")
             if not ik2:
@@ -237,6 +239,7 @@ class NumberGraspSkill:
             
             # 移动步 3: 抬高 10cm
             rospy.loginfo(f"Move 3: Lift up by {LIFT_DISTANCE}m...")
+            self.limb.set_joint_position_speed(0.2) # 抬起恢复正常速度 20%
             pose3 = create_pose(target_x, target_y, lift_h, ori)
             ik3 = self.limb.ik_request(pose3, "right_hand")
             if not ik3:
