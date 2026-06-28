@@ -379,35 +379,35 @@ class NumberGraspSkill:
                         target_cx, target_cy = det['cx'], det['cy']
                         break
                 
-                    # 动态自动标定 (依然保留，用于在没有H矩阵时计算比例)
-                    new_ratio = self.calculate_ratio(detections)
-                    if new_ratio is not None:
-                        self.pixel_to_meter_ratio = new_ratio
-                        rospy.loginfo_throttle(1, f"Auto-calibrated Ratio: {self.pixel_to_meter_ratio:.6f} m/pixel")
+                # 动态自动标定 (依然保留，用于在没有H矩阵时计算比例)
+                new_ratio = self.calculate_ratio(detections)
+                if new_ratio is not None:
+                    self.pixel_to_meter_ratio = new_ratio
+                    rospy.loginfo_throttle(1, f"Auto-calibrated Ratio: {self.pixel_to_meter_ratio:.6f} m/pixel")
+                
+                # 检查目标是否找到
+                # 如果有单应性矩阵 H，就不需要 pixel_to_meter_ratio 也能直接抓！
+                can_grasp = (self.H is not None) or (self.pixel_to_meter_ratio is not None)
+                
+                if target_cx is not None and can_grasp:
+                    h_img, w_img, _ = frame.shape
                     
-                    # 检查目标是否找到
-                    # 如果有单应性矩阵 H，就不需要 pixel_to_meter_ratio 也能直接抓！
-                    can_grasp = (self.H is not None) or (self.pixel_to_meter_ratio is not None)
+                    rospy.loginfo(f"Target '{self.target_number}' found at ({target_cx:.1f}, {target_cy:.1f}). Initiating grasp...")
                     
-                    if target_cx is not None and can_grasp:
-                        h_img, w_img, _ = frame.shape
-                        
-                        rospy.loginfo(f"Target '{self.target_number}' found at ({target_cx:.1f}, {target_cy:.1f}). Initiating grasp...")
-                        
-                        # 明确在画面上显示已锁定，暂停识别
-                        cv2.putText(annotated_frame, "TARGET LOCKED - VISION PAUSED", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-                        cv2.imshow("YOLO Vision", annotated_frame)
-                        cv2.waitKey(1)
-                        
-                        self.execute_grasp(target_cx, target_cy, w_img, h_img)
+                    # 明确在画面上显示已锁定，暂停识别
+                    cv2.putText(annotated_frame, "TARGET LOCKED - VISION PAUSED", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                    cv2.imshow("YOLO Vision", annotated_frame)
+                    cv2.waitKey(1)
                     
+                    self.execute_grasp(target_cx, target_cy, w_img, h_img)
+                
                     # 抓取完成后清空摄像头缓冲，等待下一个指令循环
                     for _ in range(10):
                         self.cap.grab()
                     rospy.sleep(0.5)
                     self.target_number = None
                     self.state = "WAITING"
-                else:
+            else:
                     if target_cx is None:
                         rospy.loginfo_throttle(2, f"Searching for target {self.target_number}...")
                     else:
