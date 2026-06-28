@@ -65,6 +65,18 @@ class NumberGraspSkill:
             rospy.logerr(f"Failed to load YOLO model: {e}")
             return
             
+        # 尝试加载单应性标定矩阵 (完美的抓取坐标映射)
+        self.H = None
+        try:
+            calib_path = os.path.join(rospack.get_path('Position_Calibration'), 'config', 'calibration.yaml')
+            import yaml
+            with open(calib_path, 'r') as f:
+                calib_data = yaml.safe_load(f)
+                self.H = np.array(calib_data['homography_matrix'])
+                rospy.loginfo(f"Successfully loaded Homography Matrix from {calib_path}")
+        except Exception as e:
+            rospy.logwarn(f"Could not load calibration.yaml: {e}. Will fallback to basic ratio math.")
+            
         # 打开 USB 摄像头
         self.cap = cv2.VideoCapture(CAMERA_INDEX)
         if not self.cap.isOpened():
@@ -170,8 +182,8 @@ class NumberGraspSkill:
             return avg_ratio
         return None
 
-    def execute_grasp(self, offset_x, offset_y):
-        rospy.loginfo(f"Executing grasp with offset X: {offset_x:.4f}m, Y: {offset_y:.4f}m")
+    def execute_grasp(self, target_cx, target_cy, w, h):
+        rospy.loginfo(f"Executing grasp for pixel ({target_cx:.1f}, {target_cy:.1f})")
         try:
             current_pose = self.limb.endpoint_pose()
             cx = current_pose['position'].x
@@ -179,9 +191,24 @@ class NumberGraspSkill:
             cz = current_pose['position'].z
             ori = current_pose['orientation'] # This is a Quaternion
             
-            # 加入摄像头物理偏移量补偿
-            target_x = cx + offset_x + CAMERA_OFFSET_X
-            target_y = cy + offset_y + CAMERA_OFFSET_Y
+            # 使用超级精准的单应性矩阵映射坐标！
+            if self.H is not None:
+                rospy.loginfo("Using Homography matrix for precise absolute Cartesian mapping!")
+                pixel_pt = np.array([target_cx, target_cy, 1.0])
+                arm_pt = self.H @ pixel_pt
+                target_x = arm_pt[0] / arm_pt[2]
+                target_y = arm_pt[1] / arm_pt[2]
+            else:
+                # 兼容模式：如果没有标定文件，则退回到旧的比例计算法
+                rospy.logwarn("Homography matrix missing! Falling back to linear ratio math.")
+                du = target_cx - w / 2.0
+                dv = target_cy - h / 2.0
+                offset_x = -dv * self.pixel_to_meter_ratio 
+                offset_y = -du * self.pixel_to_meter_ratio
+                target_x = cx + offset_x + CAMERA_OFFSET_X
+                target_y = cy + offset_y + CAMERA_OFFSET_Y
+            
+            rospy.loginfo(f"Calculated Absolute Target -> X: {target_x:.4f}, Y: {target_y:.4f}")
             
             # 动态高度计算
             observe_h = cz
@@ -352,35 +379,27 @@ class NumberGraspSkill:
                         target_cx, target_cy = det['cx'], det['cy']
                         break
                 
-                # 执行动态自动标定
-                new_ratio = self.calculate_ratio(detections)
-                if new_ratio is not None:
-                    self.pixel_to_meter_ratio = new_ratio
-                    rospy.loginfo_throttle(1, f"Auto-calibrated Ratio: {self.pixel_to_meter_ratio:.6f} m/pixel")
-                
-                # 检查目标是否找到，并且比例是否已经标定
-                if target_cx is not None and self.pixel_to_meter_ratio is not None:
-                    h, w, _ = frame.shape
+                    # 动态自动标定 (依然保留，用于在没有H矩阵时计算比例)
+                    new_ratio = self.calculate_ratio(detections)
+                    if new_ratio is not None:
+                        self.pixel_to_meter_ratio = new_ratio
+                        rospy.loginfo_throttle(1, f"Auto-calibrated Ratio: {self.pixel_to_meter_ratio:.6f} m/pixel")
                     
-                    # 像素偏移量 (相对画面中心)
-                    du = target_cx - w / 2.0
-                    dv = target_cy - h / 2.0
+                    # 检查目标是否找到
+                    # 如果有单应性矩阵 H，就不需要 pixel_to_meter_ratio 也能直接抓！
+                    can_grasp = (self.H is not None) or (self.pixel_to_meter_ratio is not None)
                     
-                    # --- 坐标转换映射 (重点关注) ---
-                    # 注意：正负号取决于摄像头在夹爪上的具体物理安装朝向。
-                    # 假设：画面上方是机械臂正前方(+X)，画面右方是机械臂右方(-Y)
-                    # 如果真机运行发现左右/前后反了，请修改此处的正负号。
-                    offset_x = -dv * self.pixel_to_meter_ratio 
-                    offset_y = -du * self.pixel_to_meter_ratio
-                    
-                    rospy.loginfo(f"Target '{self.target_number}' found at ({target_cx:.1f}, {target_cy:.1f}). Initiating grasp...")
-                    
-                    # 明确在画面上显示已锁定，暂停识别
-                    cv2.putText(annotated_frame, "TARGET LOCKED - VISION PAUSED", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-                    cv2.imshow("YOLO Vision", annotated_frame)
-                    cv2.waitKey(1)
-                    
-                    self.execute_grasp(offset_x, offset_y)
+                    if target_cx is not None and can_grasp:
+                        h_img, w_img, _ = frame.shape
+                        
+                        rospy.loginfo(f"Target '{self.target_number}' found at ({target_cx:.1f}, {target_cy:.1f}). Initiating grasp...")
+                        
+                        # 明确在画面上显示已锁定，暂停识别
+                        cv2.putText(annotated_frame, "TARGET LOCKED - VISION PAUSED", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                        cv2.imshow("YOLO Vision", annotated_frame)
+                        cv2.waitKey(1)
+                        
+                        self.execute_grasp(target_cx, target_cy, w_img, h_img)
                     
                     # 抓取完成后清空摄像头缓冲，等待下一个指令循环
                     for _ in range(10):
