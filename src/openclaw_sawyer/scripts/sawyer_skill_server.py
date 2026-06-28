@@ -678,14 +678,21 @@ class SawyerSkillServer:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
         
-        # Get machine IP
+        # Get machine IP (Prioritize the 192.168.x.x router network)
+        my_ip = '127.0.0.1'
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            s.connect(('10.255.255.255', 1))
+            # Connect to a common router IP to force the right interface selection
+            s.connect(('192.168.31.1', 1))
             my_ip = s.getsockname()[0]
             s.close()
         except:
-            my_ip = '127.0.0.1'
+            try:
+                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                s.connect(('8.8.8.8', 1))
+                my_ip = s.getsockname()[0]
+                s.close()
+            except: pass
 
         payload = {
             "device_id": "sawyer_01",
@@ -696,9 +703,20 @@ class SawyerSkillServer:
         }
         message = json.dumps(payload).encode('utf-8')
         
+        # Calculate subnet broadcast address (e.g. 192.168.31.255)
+        subnet_bcast = '<broadcast>'
+        if my_ip != '127.0.0.1':
+            parts = my_ip.split('.')
+            if len(parts) == 4:
+                subnet_bcast = f"{parts[0]}.{parts[1]}.{parts[2]}.255"
+        
         while not rospy.is_shutdown():
             try:
+                # Broadcast universally
                 sock.sendto(message, ('<broadcast>', port))
+                # Broadcast specifically to the router subnet (solves multi-nic routing issues)
+                if subnet_bcast != '<broadcast>':
+                    sock.sendto(message, (subnet_bcast, port))
             except: pass
             time.sleep(2.0)
         sock.close()
