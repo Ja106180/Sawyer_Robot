@@ -9,6 +9,7 @@ import os
 import math
 import rospkg
 from std_msgs.msg import Int32
+from geometry_msgs.msg import Pose, Point, Quaternion
 from ultralytics import YOLO
 
 # ==========================================
@@ -157,15 +158,27 @@ class NumberGraspSkill:
             current_pose = self.limb.endpoint_pose()
             cx = current_pose['position'].x
             cy = current_pose['position'].y
-            ori = current_pose['orientation']
+            ori = current_pose['orientation'] # This is a Quaternion
             
             target_x = cx + offset_x
             target_y = cy + offset_y
             
+            # Helper to create Pose
+            def create_pose(tx, ty, tz, orientation):
+                p = Pose()
+                p.position.x = tx
+                p.position.y = ty
+                p.position.z = tz
+                p.orientation.x = orientation.x
+                p.orientation.y = orientation.y
+                p.orientation.z = orientation.z
+                p.orientation.w = orientation.w
+                return p
+            
             # 移动步 1: 在 9cm 高度水平对准
             rospy.loginfo("Move 1: Horizontal align at OBSERVE_HEIGHT...")
-            p1 = {'position': (target_x, target_y, OBSERVE_HEIGHT), 'orientation': ori}
-            ik1 = self.limb.ik_request(p1)
+            pose1 = create_pose(target_x, target_y, OBSERVE_HEIGHT, ori)
+            ik1 = self.limb.ik_request(pose1, "right_gripper_tip")
             if not ik1:
                 rospy.logerr("IK failed for horizontal align.")
                 return
@@ -173,8 +186,8 @@ class NumberGraspSkill:
             
             # 移动步 2: 垂直下降到 5cm
             rospy.loginfo("Move 2: Descend to SAFE_GRASP_HEIGHT...")
-            p2 = {'position': (target_x, target_y, SAFE_GRASP_HEIGHT), 'orientation': ori}
-            ik2 = self.limb.ik_request(p2)
+            pose2 = create_pose(target_x, target_y, SAFE_GRASP_HEIGHT, ori)
+            ik2 = self.limb.ik_request(pose2, "right_gripper_tip")
             if not ik2:
                 rospy.logerr("IK failed for descend.")
                 return
@@ -224,6 +237,11 @@ class NumberGraspSkill:
             elif self.state == "SEARCHING":
                 # 推理图像
                 results = self.model(frame, verbose=False)
+                
+                # 绘制带 YOLO 框的图像以供显示
+                annotated_frame = results[0].plot()
+                cv2.imshow("YOLO Vision", annotated_frame)
+                cv2.waitKey(1)
                 
                 detections = []
                 target_cx, target_cy = None, None
