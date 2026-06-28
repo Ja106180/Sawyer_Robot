@@ -32,7 +32,14 @@ class USBCameraStream:
     def __init__(self, camera_index=0):
         self.cap = cv2.VideoCapture(camera_index)
         if not self.cap.isOpened():
-            rospy.logerr(f"无法打开USB摄像头 {camera_index}！")
+            rospy.logwarn(f"第一次尝试打开USB摄像头 {camera_index} 失败，可能是被抓取程序占用或正在释放，等待 2 秒重试...")
+            rospy.sleep(2.0)
+            self.cap = cv2.VideoCapture(camera_index)
+            
+        if not self.cap.isOpened():
+            rospy.logerr(f"【严重错误】彻底无法打开USB摄像头 {camera_index}！")
+            rospy.logerr("【原因】几乎肯定是刚才的抓取程序还在后台偷偷运行，没有彻底释放摄像头！")
+            rospy.logerr("【解决办法】请在终端运行： fuser -k /dev/video0 或者 killall python3 强制杀掉占用进程！")
             
     def get_latest_image(self):
         if self.cap.isOpened():

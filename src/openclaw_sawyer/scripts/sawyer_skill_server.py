@@ -664,9 +664,29 @@ class SawyerSkillServer:
 
 
 
+import signal
+import os
+import sys
+
+def cleanup_server_processes(sig, frame):
+    rospy.loginfo("Shutting down Sawyer Skill Server. Cleaning up child processes...")
+    if 'server' in globals():
+        for name, p in server.processes.items():
+            if p is not None and p.poll() is None:
+                rospy.loginfo(f"Force killing child process: {name} (PID {p.pid})")
+                try:
+                    os.killpg(os.getpgid(p.pid), signal.SIGKILL)
+                except Exception as e:
+                    pass
+    sys.exit(0)
+
 if __name__ == '__main__':
+    signal.signal(signal.SIGINT, cleanup_server_processes)
+    signal.signal(signal.SIGTERM, cleanup_server_processes)
     try:
         server = SawyerSkillServer()
         rospy.spin()
-    except rospy.ROSInterruptException:
+    except Exception:
         pass
+    finally:
+        cleanup_server_processes(None, None)
