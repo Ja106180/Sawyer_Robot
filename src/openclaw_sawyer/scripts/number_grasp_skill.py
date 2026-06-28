@@ -279,9 +279,8 @@ class NumberGraspSkill:
                 
             if self.state == "WAITING":
                 if self.target_number is not None:
-                    # 进入放物体的倒计时状态
-                    self.state = "COUNTDOWN"
-                    self.countdown_start = rospy.Time.now().to_sec()
+                    # 收到指令，立刻进入搜索状态
+                    self.state = "SEARCHING"
                 else:
                     # 在等待状态时显示实时画面，表明正在等待
                     cv2.putText(frame, "WAITING FOR COMMAND...", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
@@ -296,31 +295,12 @@ class NumberGraspSkill:
                     except:
                         pass
                         
-            elif self.state == "COUNTDOWN":
-                # 显示倒计时，等待用户放物体 (等待3秒)
-                elapsed = rospy.Time.now().to_sec() - self.countdown_start
-                remain = 3.0 - elapsed
-                
-                if remain <= 0:
-                    self.state = "SEARCHING"
-                else:
-                    cv2.putText(frame, f"PLACE OBJECT! SEARCHING IN: {remain:.1f}s", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 165, 255), 2)
-                    cv2.imshow("YOLO Vision", frame)
-                    cv2.waitKey(1)
-                    try:
-                        if cv2.getWindowProperty("YOLO Vision", cv2.WND_PROP_VISIBLE) < 1:
-                            break
-                    except:
-                        pass
-                    
             elif self.state == "SEARCHING":
                 # 推理图像
                 results = self.model(frame, verbose=False)
                 
                 # 绘制带 YOLO 框的图像以供显示
                 annotated_frame = results[0].plot()
-                cv2.imshow("YOLO Vision", annotated_frame)
-                cv2.waitKey(1)
                 
                 try:
                     if cv2.getWindowProperty("YOLO Vision", cv2.WND_PROP_VISIBLE) < 1:
@@ -357,23 +337,53 @@ class NumberGraspSkill:
                         break
                 
                 if target_cx is not None and self.H is not None:
-                    h_img, w_img, _ = frame.shape
+                    # 找到了目标，保存坐标和当前画面
+                    self.locked_cx = target_cx
+                    self.locked_cy = target_cy
+                    self.locked_frame = annotated_frame.copy()
                     
-                    rospy.loginfo(f"Target '{self.target_number}' found at ({target_cx:.1f}, {target_cy:.1f}). Initiating grasp...")
+                    rospy.loginfo(f"Target '{self.target_number}' found at ({target_cx:.1f}, {target_cy:.1f}). Locking coordinates...")
                     
-                    # 明确在画面上显示已锁定，暂停识别
-                    cv2.putText(annotated_frame, "TARGET LOCKED - VISION PAUSED", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                    # 切换到倒计时状态，给用户 3 秒放物体
+                    self.state = "COUNTDOWN"
+                    self.countdown_start = rospy.Time.now().to_sec()
+                else:
+                    # 如果没找到，继续显示搜索画面
+                    cv2.putText(annotated_frame, f"SEARCHING FOR TARGET: {self.target_number}...", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 165, 255), 2)
                     cv2.imshow("YOLO Vision", annotated_frame)
                     cv2.waitKey(1)
                     
-                    self.execute_grasp(target_cx, target_cy, w_img, h_img)
+            elif self.state == "COUNTDOWN":
+                # 显示锁定的画面和倒计时，等待用户放物体 (等待3秒)
+                elapsed = rospy.Time.now().to_sec() - self.countdown_start
+                remain = 3.0 - elapsed
                 
-                    # 抓取完成后清空摄像头缓冲，等待下一个指令循环
-                    for _ in range(10):
-                        self.cap.grab()
-                    rospy.sleep(0.5)
-                    self.target_number = None
-                    self.state = "WAITING"
+                display_frame = self.locked_frame.copy()
+                
+                if remain <= 0:
+                    self.state = "EXECUTING"
+                else:
+                    cv2.putText(display_frame, f"TARGET LOCKED! PLACE OBJECT IN: {remain:.1f}s", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+                    cv2.imshow("YOLO Vision", display_frame)
+                    cv2.waitKey(1)
+                    try:
+                        if cv2.getWindowProperty("YOLO Vision", cv2.WND_PROP_VISIBLE) < 1:
+                            break
+                    except:
+                        pass
+                        
+            elif self.state == "EXECUTING":
+                h_img, w_img, _ = frame.shape
+                
+                # 使用刚才锁定的坐标执行抓取
+                self.execute_grasp(self.locked_cx, self.locked_cy, w_img, h_img)
+            
+                # 抓取完成后清空摄像头缓冲，等待下一个指令循环
+                for _ in range(10):
+                    self.cap.grab()
+                rospy.sleep(0.5)
+                self.target_number = None
+                self.state = "WAITING"
                         
             rate.sleep()
             
