@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -7,6 +8,7 @@
     <!-- ROS Libraries -->
     <link rel="stylesheet" href="css/style.css">
 </head>
+
 <body>
     <!-- Emergency Stop Button -->
     <button id="btn-estop" class="estop-btn">
@@ -30,10 +32,10 @@
             <div class="section-title">核心功能</div>
             <div class="mode-grid">
                 <button id="btn-grasp" class="mode-card">
-                    <span>👁️ 视觉抓取</span>
+                    <span>视觉抓取</span>
                 </button>
                 <button id="btn-follow" class="mode-card">
-                    <span>🤝 手臂跟随</span>
+                    <span>手臂跟随</span>
                 </button>
             </div>
         </div>
@@ -42,12 +44,13 @@
             <div class="section-title">数字盘视觉抓取</div>
             <!-- 第一步：启动后台服务 (这会进行初始化) -->
             <button id="btn-num-grasp-process" class="mode-card" style="width: 100%; margin-bottom: 10px;">
-                <span>⚙️ 1. 启动数字抓取后台服务</span>
+                <span>1. 启动数字抓取后台服务</span>
             </button>
-            
+
             <!-- 第二步：发送数字指令 (可反复执行) -->
             <div style="display: flex; gap: 10px; margin-bottom: 5px;">
-                <select id="select-number" class="mode-card" style="flex: 1; padding: 10px; font-size: 16px; background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); border-radius: 8px;">
+                <select id="select-number" class="mode-card"
+                    style="flex: 1; padding: 10px; font-size: 16px; background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); border-radius: 8px;">
                     <option value="1">数字 1</option>
                     <option value="2">数字 2</option>
                     <option value="3">数字 3</option>
@@ -59,13 +62,13 @@
                     <option value="9">数字 9</option>
                 </select>
                 <button id="btn-send-number" class="mode-card" style="flex: 2; border-color: var(--primary);">
-                    <span>🎯 2. 发送目标进行抓取</span>
+                    <span>2. 发送目标进行抓取</span>
                 </button>
             </div>
-            
+
             <!-- 第三步：跨盘遮挡搬运 -->
             <button id="btn-transfer-grasp" class="mode-card" style="width: 100%;">
-                <span>🔄 3. 跨盘遮挡搬运 (Transfer)</span>
+                <span>3. 跨盘遮挡搬运 (Transfer)</span>
             </button>
         </div>
 
@@ -73,10 +76,10 @@
             <div class="section-title">摄像头控制</div>
             <div class="mode-grid">
                 <button id="btn-head-cam" class="mode-card">
-                    <span>📷 头部摄像头</span>
+                    <span>头部摄像头</span>
                 </button>
                 <button id="btn-hand-cam" class="mode-card">
-                    <span>📹 末端摄像头</span>
+                    <span>末端摄像头</span>
                 </button>
             </div>
         </div>
@@ -84,30 +87,32 @@
         <div class="nav-section">
             <div class="section-title">夹爪控制</div>
             <button id="btn-gripper" class="action-btn">
-                <span>🗜️ 切换夹爪</span>
+                <span>切换夹爪</span>
             </button>
         </div>
 
         <div class="nav-section">
             <div class="section-title">复位控制</div>
             <button id="btn-reset" class="action-btn">
-                <span>🔄 一键复位</span>
+                <span>一键复位</span>
             </button>
         </div>
         <div class="nav-section">
             <div class="section-title">示教与回放 (Teach & Replay)</div>
-            
+
             <div class="mode-grid" id="record-controls-idle">
                 <button id="btn-record-start" class="mode-card" style="grid-column: span 2;">
-                    <span>🔴 创建 (开始拖拽示教)</span>
+                    <span>创建 (开始拖拽示教)</span>
                 </button>
             </div>
             <div class="mode-grid" id="record-controls-active" style="display: none;">
-                <button id="btn-record-save" class="mode-card" style="border-color: var(--success); color: var(--success);">
-                    <span>💾 保存</span>
+                <button id="btn-record-save" class="mode-card"
+                    style="border-color: var(--success); color: var(--success);">
+                    <span>保存</span>
                 </button>
-                <button id="btn-record-cancel" class="mode-card" style="border-color: var(--danger); color: var(--danger);">
-                    <span>✖ 取消</span>
+                <button id="btn-record-cancel" class="mode-card"
+                    style="border-color: var(--danger); color: var(--danger);">
+                    <span>取消</span>
                 </button>
             </div>
 
@@ -132,10 +137,10 @@
 
             <div class="mode-grid" style="margin-top: 15px;">
                 <button id="btn-play-start" class="action-btn play-btn">
-                    <span>▶️ 开启</span>
+                    <span>开启</span>
                 </button>
                 <button id="btn-play-stop" class="action-btn stop-btn">
-                    <span>⏹ 关闭</span>
+                    <span>关闭</span>
                 </button>
             </div>
         </div>
@@ -226,4 +231,5 @@
     <script src="https://cdn.jsdelivr.net/npm/roslib@1/build/roslib.min.js"></script>
     <script src="js/main.js"></script>
 </body>
+
 </html>
