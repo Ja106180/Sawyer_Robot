@@ -43,6 +43,8 @@ class TransferGraspSkill:
         self.locked_num = None          # 最终锁定要抓取/放置的数字
         self.locked_cx = None
         self.locked_cy = None
+        self.pan_a_ee_x = None          # A 盘观察时的末端物理 X 坐标
+        self.pan_a_ee_y = None          # A 盘观察时的末端物理 Y 坐标
         
         # 加载 YOLOv8 模型
         rospack = rospkg.RosPack()
@@ -149,13 +151,30 @@ class TransferGraspSkill:
             if self.H is not None:
                 pixel_pt = np.array([target_cx, target_cy, 1.0])
                 arm_pt = self.H @ pixel_pt
+                
+                # 这里算出来的是目标在 A 盘标定系下的绝对物理坐标
                 target_x = (arm_pt[0] / arm_pt[2]) + GRASP_OFFSET_X
                 target_y = (arm_pt[1] / arm_pt[2]) + GRASP_OFFSET_Y
+                
+                if not is_place:
+                    # 如果是在 A 盘抓取，保存此时机械臂末端的真实绝对位置
+                    self.pan_a_ee_x = cx
+                    self.pan_a_ee_y = cy
+                else:
+                    # 如果是在 B 盘放置，H 矩阵算出的 target_x 是它以为还在 A 盘时的坐标！
+                    # 所以我们需要算出目标相对于 A 盘末端的【偏移量向量】，然后加到当前的 B 盘末端坐标上！
+                    if self.pan_a_ee_x is not None and self.pan_a_ee_y is not None:
+                        offset_x = target_x - self.pan_a_ee_x
+                        offset_y = target_y - self.pan_a_ee_y
+                        target_x = cx + offset_x
+                        target_y = cy + offset_y
+                    else:
+                        rospy.logwarn("Missing Pan A EE coordinates! Target might be inaccurate.")
             else:
                 rospy.logwarn("Homography matrix missing! Cannot perform precision grasp.")
                 return False
             
-            rospy.loginfo(f"Absolute Target -> X: {target_x:.4f}, Y: {target_y:.4f}")
+            rospy.loginfo(f"Final Target -> X: {target_x:.4f}, Y: {target_y:.4f}")
             
             observe_h = cz
             safe_grasp_h = cz - DESCEND_DISTANCE
