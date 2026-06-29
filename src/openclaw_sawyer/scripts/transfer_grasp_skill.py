@@ -119,10 +119,18 @@ class TransferGraspSkill:
         rospy.loginfo("Transferring to B-Pan observation pose...")
         try:
             self.limb.set_joint_position_speed(0.1)
-            current = self.limb.joint_angles()
-            current['right_j0'] = -0.5
-            current['right_j6'] = -1.8
-            self.limb.move_to_joint_positions(current)
+            # 必须使用绝对的全量姿态，而不能用 current
+            # 因为刚抓取完后，IK 算出的 J1-J5 姿态可能千奇百怪，如果只改 J0 和 J6，很容易导致关节冲突或者轨迹规划失败！
+            full_pose_b = {
+                'right_j0': -0.5,
+                'right_j1': -0.5,
+                'right_j2': 0.0,
+                'right_j3': 1.0,
+                'right_j4': 0.0,
+                'right_j5': 1.1,
+                'right_j6': -1.8
+            }
+            self.limb.move_to_joint_positions(full_pose_b)
             rospy.sleep(3.0) # 等待3秒，让机械臂完全稳定，避免摄像头画面晃动导致误识别
             
             self.limb.set_joint_position_speed(0.2)
