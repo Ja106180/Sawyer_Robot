@@ -71,6 +71,7 @@ window.onload = function () {
     var graspSrv = new ROSLIB.Service({ ros: ros, name: '/sawyer_grasp', serviceType: 'std_srvs/SetBool' });
     var followSrv = new ROSLIB.Service({ ros: ros, name: '/sawyer_follow', serviceType: 'std_srvs/SetBool' });
     var numGraspSrv = new ROSLIB.Service({ ros: ros, name: '/sawyer_number_grasp', serviceType: 'std_srvs/SetBool' });
+    var transferGraspSrv = new ROSLIB.Service({ ros: ros, name: '/sawyer_transfer_grasp', serviceType: 'std_srvs/SetBool' });
     var stopSrv = new ROSLIB.Service({ ros: ros, name: '/sawyer_stop', serviceType: 'std_srvs/Trigger' });
     var headCamSrv = new ROSLIB.Service({ ros: ros, name: '/sawyer_head_cam', serviceType: 'std_srvs/SetBool' });
     var handCamSrv = new ROSLIB.Service({ ros: ros, name: '/sawyer_hand_cam', serviceType: 'std_srvs/SetBool' });
@@ -292,6 +293,7 @@ window.onload = function () {
 
     bindMode('btn-grasp', graspSrv, "Visual Grasping");
     bindMode('btn-follow', followSrv, "Arm Following");
+    bindMode('btn-transfer-grasp', transferGraspSrv, "Transfer Grasping");
 
     // Number Grasping Logic - Redesigned
     // Button 1: Toggle Backend Process
