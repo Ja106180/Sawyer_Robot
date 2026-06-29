@@ -178,7 +178,10 @@ class TransferGraspSkill:
             
             observe_h = cz
             safe_grasp_h = cz - DESCEND_DISTANCE
-            lift_h = safe_grasp_h + LIFT_DISTANCE
+            
+            # 致命错误修复：抬起的高度必须回到初始的观察高度！
+            # 否则因为抓取后没有回位，到了 B 盘时它的起始高度就已经比 A 盘低了，再下降就会撞到桌面！
+            lift_h = observe_h
             
             def create_pose(tx, ty, tz, orientation):
                 p = Pose()
