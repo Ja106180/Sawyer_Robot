@@ -131,7 +131,7 @@ class TransferGraspSkill:
                 'right_j6': -1.8
             }
             self.limb.move_to_joint_positions(full_pose_b)
-            rospy.sleep(3.0) # 等待3秒，让机械臂完全稳定，避免摄像头画面晃动导致误识别
+            rospy.sleep(1.0) # 缩短为 1 秒等待
             
             self.limb.set_joint_position_speed(0.2)
             
@@ -233,9 +233,9 @@ class TransferGraspSkill:
             else:
                 self.limb.move_to_joint_positions(ik1)
                 
-            # 抬高后等待 2 秒，确保物理稳定
-            rospy.loginfo("Waiting 2.0s for physical stabilization...")
-            rospy.sleep(2.0)
+            # 抬高后等待 1 秒，确保物理稳定
+            rospy.loginfo("Waiting 1.0s for physical stabilization...")
+            rospy.sleep(1.0)
                 
             # 不再回归中心，因为马上要执行 Transfer
             return True
