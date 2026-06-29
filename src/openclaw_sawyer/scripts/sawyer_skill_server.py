@@ -105,13 +105,13 @@ class SawyerSkillServer:
         # J0 (base): overdamped to prevent oscillation of the heavy base
         # J1-J6: critically damped for smooth, fast response without overshoot
         self.spring_params = {
-            "right_j0": {"omega": 6.0, "zeta": 1.5, "max_delta": 0.5, "snap": 0.02},
-            "right_j1": {"omega": 8.0, "zeta": 1.0, "max_delta": 0.6, "snap": 0.02},
-            "right_j2": {"omega": 8.0, "zeta": 1.0, "max_delta": 0.6, "snap": 0.02},
-            "right_j3": {"omega": 8.0, "zeta": 1.0, "max_delta": 0.6, "snap": 0.02},
-            "right_j4": {"omega": 8.0, "zeta": 1.0, "max_delta": 0.6, "snap": 0.02},
-            "right_j5": {"omega": 8.0, "zeta": 1.0, "max_delta": 0.6, "snap": 0.02},
-            "right_j6": {"omega": 8.0, "zeta": 1.0, "max_delta": 0.6, "snap": 0.02},
+            "right_j0": {"omega": 2.0, "zeta": 1.5, "max_delta": 0.2, "snap": 0.02},
+            "right_j1": {"omega": 2.0, "zeta": 1.0, "max_delta": 0.2, "snap": 0.02},
+            "right_j2": {"omega": 2.5, "zeta": 1.0, "max_delta": 0.2, "snap": 0.02},
+            "right_j3": {"omega": 2.5, "zeta": 1.0, "max_delta": 0.2, "snap": 0.02},
+            "right_j4": {"omega": 3.0, "zeta": 1.0, "max_delta": 0.2, "snap": 0.02},
+            "right_j5": {"omega": 3.0, "zeta": 1.0, "max_delta": 0.2, "snap": 0.02},
+            "right_j6": {"omega": 3.0, "zeta": 1.0, "max_delta": 0.2, "snap": 0.02},
         }
         self.joint_velocity = {}   # velocity state for spring-damper
         self.last_command = {}     # last commanded position
@@ -724,7 +724,24 @@ class SawyerSkillServer:
     def handle_move_relative(self, req):
         """Handle relative movement commands from Hermes (e.g. rotate left by 0.2 rad)."""
         try:
-            deltas = json.loads(req.data)
+            # Clean up potential LLM formatting errors before parsing
+            raw_data = req.data.strip()
+            
+            # If LLM forgot to quote keys (e.g. {right_j0: 0.785}), fix it via regex
+            import re
+            raw_data = re.sub(r'([{,]\s*)([a-zA-Z0-9_]+)\s*:', r'\1"\2":', raw_data)
+            # Replace single quotes with double quotes
+            raw_data = raw_data.replace("'", '"')
+            
+            import ast
+            try:
+                deltas = json.loads(raw_data)
+            except Exception:
+                # Fallback to ast.literal_eval which handles malformed quotes better
+                deltas = ast.literal_eval(req.data.strip())
+                
+            if not isinstance(deltas, dict):
+                raise ValueError("Payload must be a dictionary")
             
             # Start controlling
             self.skill_active = False
