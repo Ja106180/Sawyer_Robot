@@ -1,0 +1,83 @@
+calibration_date: 1764475876.6529303
+calibration_points:
+  arm_points:
+  - - 0.8361574871793928
+    - 0.35147831023010867
+    - 0.10379114465727751
+  - - 0.8575403981723411
+    - -0.2437548877540594
+    - 0.18320075141303543
+  - - 0.6708993406235237
+    - -0.2224198812774593
+    - 0.2775228194701527
+  - - 0.6562404829747072
+    - 0.46390899872813524
+    - 0.29858113179626583
+  - - 0.7778657046974035
+    - 0.14574512180857868
+    - 0.3221849753005918
+  pixel_points:
+  - - !!python/object/apply:numpy.core.multiarray.scalar
+      - &id001 !!python/object/apply:numpy.dtype
+        args:
+        - f8
+        - false
+        - true
+        state: !!python/tuple
+        - 3
+        - <
+        - null
+        - null
+        - null
+        - -1
+        - -1
+        - 0
+      - !!binary |
+        AAAAYB0AgUA=
+    - !!python/object/apply:numpy.core.multiarray.scalar
+      - *id001
+      - !!binary |
+        AAAAAFsRf0A=
+  - - !!python/object/apply:numpy.core.multiarray.scalar
+      - *id001
+      - !!binary |
+        AAAAQJkFiEA=
+    - !!python/object/apply:numpy.core.multiarray.scalar
+      - *id001
+      - !!binary |
+        AAAAgJ7lf0A=
+  - - !!python/object/apply:numpy.core.multiarray.scalar
+      - *id001
+      - !!binary |
+        AAAAYJkXiEA=
+    - !!python/object/apply:numpy.core.multiarray.scalar
+      - *id001
+      - !!binary |
+        AAAAAObigUA=
+  - - !!python/object/apply:numpy.core.multiarray.scalar
+      - *id001
+      - !!binary |
+        AAAA4PpZfUA=
+    - !!python/object/apply:numpy.core.multiarray.scalar
+      - *id001
+      - !!binary |
+        AAAAwJIigUA=
+  - - !!python/object/apply:numpy.core.multiarray.scalar
+      - *id001
+      - !!binary |
+        AAAAwL/4gkA=
+    - !!python/object/apply:numpy.core.multiarray.scalar
+      - *id001
+      - !!binary |
+        AAAAgN8zgEA=
+homography_matrix:
+- - -0.000562215427574261
+  - 0.0006629489207008513
+  - -0.809177615007775
+- - 0.002594297666425203
+  - 0.0003086356446102125
+  - -1.8915285756259055
+- - -0.0003480308618017409
+  - -0.0035128909091044617
+  - 1.0
+table_height: 0.746

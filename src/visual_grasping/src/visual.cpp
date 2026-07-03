@@ -126,7 +126,7 @@ public:
     if (calibration_path.empty())
     {
       std::string pkg_path = ros::package::getPath("Position_Calibration");
-      calibration_path = pkg_path + "/config/calibration.yaml";
+      calibration_path = pkg_path + "/config/calibration1.yaml";
     }
     
     table_height_ = pnh_.param("table_height", 0.746);
